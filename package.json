@@ -1,0 +1,15 @@
+{
+  "name": "sleep-game-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "今天几点睡 - 联机服务器",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

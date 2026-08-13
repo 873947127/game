@@ -1,0 +1,11 @@
+# 🌙 今天几点睡 —— Render 一键部署配置
+# 部署方式：Render 仪表盘 → New + → Blueprint → 选择本仓库
+# 或手动 Web Service 时参考下面的 Build/Start 命令
+services:
+  - type: web
+    name: sleep-game-online
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true

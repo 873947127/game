@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今天几点睡 · 直连版</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="turnBanner" class="turn-banner"></div>
+    <div id="effectToast" class="effect-toast"></div>
+
+    <header class="topbar">
+      <div class="brand">🌙 今天几点睡 · 直连</div>
+      <div class="hud">
+        <span class="pill" id="roundPill">第 1 轮</span>
+        <span class="pill" id="deckPill">牌堆 --</span>
+        <span class="pill" id="discardPill">弃牌 --</span>
+        <span class="vol-wrap">
+          <input type="range" id="volSlider" min="0" max="100" value="55" title="音量" />
+        </span>
+        <button id="musicBtn" class="btn-ghost" type="button">🔇 音乐</button>
+        <button id="rulesBtn" class="btn-ghost" type="button">📜 规则</button>
+      </div>
+    </header>
+
+    <div id="opponents" class="opponents"></div>
+
+    <main class="table">
+      <div class="center-row">
+        <div class="center-block">
+          <div class="block-label">🌃 熄灯时间</div>
+          <div id="lightsOut" class="lights-out"></div>
+          <div id="roundModifiers" class="round-modifiers"></div>
+        </div>
+        <div class="center-block">
+          <div class="block-label">🂠 场上的牌（本轮累计）</div>
+          <div id="fieldStack" class="field-stack"></div>
+          <div id="fieldCount" class="field-count">0 张</div>
+        </div>
+        <div class="center-block">
+          <div class="block-label">👁 刚刚扣下的牌</div>
+          <div id="currentPlay" class="current-play"></div>
+        </div>
+      </div>
+      <div id="revealBox" class="reveal-box hidden"></div>
+      <div id="prompt" class="prompt"></div>
+      <div id="log" class="log"></div>
+    </main>
+
+    <section class="player-area">
+      <div id="playerBar" class="player-bar"></div>
+      <div id="hand" class="hand"></div>
+      <div id="actions" class="actions"></div>
+    </section>
+  </div>
+
+  <!-- 直连大厅 -->
+  <div id="p2pOverlay" class="overlay">
+    <div class="modal setup" style="max-width:640px">
+      <h2>🕸 直连对战（无需服务器）</h2>
+      <p class="subtitle">一个玩家当主机，朋友通过连接码直接连到他</p>
+
+      <div class="setup-row">
+        <span class="setup-label">你的名字</span>
+        <input type="text" id="myName" maxlength="6" value="玩家" style="background:rgba(10,14,32,.7);border:1px solid rgba(154,163,199,.3);border-radius:10px;color:var(--text);padding:8px 10px;font:inherit;min-width:120px;" />
+      </div>
+
+      <div class="setup-row" style="gap:20px">
+        <div>
+          <button id="hostBtn" class="btn-primary" type="button">🏠 我当主机</button>
+          <p class="hint" style="margin-top:6px">主机创建游戏，生成连接码发给朋友</p>
+        </div>
+        <div>
+          <button id="clientBtn" class="btn-ghost" type="button">👋 我加入朋友</button>
+          <p class="hint" style="margin-top:6px">粘贴主机给你的连接码</p>
+        </div>
+      </div>
+
+      <!-- 主机区 -->
+      <div id="hostArea" class="hidden" style="text-align:left">
+        <div class="setup-row"><span class="setup-label">总人数</span>
+          <div class="stepper">
+            <button id="pMinus" type="button">−</button><span id="pCount" class="stepper-val">4</span><button id="pPlus" type="button">＋</button>
+          </div>
+        </div>
+        <p class="hint">给每位朋友各生成一个「座位连接码」发给他 → 他把你的码粘贴进去得到「回答码」发回 → 你把回答码粘到对应座位框里点连接</p>
+        <button id="genCodeBtn" class="btn-ghost" type="button">生成一个座位连接码</button>
+        <div id="seatCodes" style="display:flex;flex-direction:column;gap:10px;margin:10px 0"></div>
+        <div id="hostStatus" class="hint"></div>
+        <button id="startP2pBtn" class="btn-primary big hidden" type="button">🚀 开始游戏</button>
+      </div>
+
+      <!-- 加入区 -->
+      <div id="clientArea" class="hidden" style="text-align:left">
+        <p class="hint">把主机发给你的「座位连接码」粘贴进来：</p>
+        <textarea id="clientCode" rows="3" style="width:100%;background:rgba(10,14,32,.7);border:1px solid rgba(154,163,199,.3);border-radius:10px;color:var(--text);padding:8px;font-size:12px;resize:vertical" placeholder="粘贴主机给你的连接码"></textarea>
+        <button id="clientApplyBtn" class="btn-primary" type="button">连接</button>
+        <div id="clientAnswerArea" class="hidden" style="margin-top:10px">
+          <p class="hint">把下面的「回答码」复制发给主机：</p>
+          <textarea id="clientAnswer" rows="3" style="width:100%;background:rgba(10,14,32,.7);border:1px solid rgba(154,163,199,.3);border-radius:10px;color:var(--text);padding:8px;font-size:12px" readonly></textarea>
+          <button id="copyAnswerBtn" class="btn-ghost" type="button">复制回答码</button>
+        </div>
+        <div id="clientStatus" class="hint"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rulesOverlay" class="overlay hidden">
+    <div class="modal rules">
+      <h2>📜 玩法速览</h2>
+      <div class="rules-body"></div>
+      <button id="closeRulesBtn" class="btn-primary" type="button">我知道了</button>
+    </div>
+  </div>
+
+  <div id="modalOverlay" class="overlay hidden">
+    <div class="modal">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div id="modalActions"></div>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="ai.js"></script>
+  <script src="bgm.js"></script>
+  <script src="sfx.js"></script>
+  <script src="p2p.js"></script>
+</body>
+</html>

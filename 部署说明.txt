@@ -1,0 +1,100 @@
+═══════════════════════════════════════════════
+   🌙 今天几点睡 —— 服务器版部署说明
+═══════════════════════════════════════════════
+
+服务器版（net.html）需要一个“服务器程序”跑在云端，
+让不同网络的朋友都能连进来。直连版（p2p.html）不用部署。
+
+本文件夹自带：
+- render.yaml  （Render 的配置，导入仓库后自动识别，无需手动填命令）
+- .gitignore   （自动忽略 node_modules 等，防止误传）
+- render部署包.zip（可直接上传的部署包，文件都在根目录）
+
+───────────────────────────────────────────────
+方式一：本地电脑试玩（最快速，只能同一网络用）
+───────────────────────────────────────────────
+1. 确认电脑装了 Node.js（没装去 https://nodejs.org 下载 LTS 版）
+2. 打开命令行（cmd / PowerShell），进到本文件夹：
+     cd 你的文件夹路径
+3. 安装依赖（只需一次）：
+     npm install
+4. 启动服务器：
+     npm start
+5. 看到“联机服务器已启动”后，在浏览器打开：
+     http://localhost:3000/index.html
+6. 把地址里的 localhost 换成你电脑的局域网IP
+   （命令行输入 ipconfig 查看，IPv4 地址形如 192.168.x.x）
+   同一WiFi下的朋友就能用 http://192.168.x.x:3000/index.html 进来玩了
+
+───────────────────────────────────────────────
+方式二：免费部署到云端（推荐，哪里都能玩）
+───────────────────────────────────────────────
+用 Render 免费托管（无需信用卡）。
+
+【推荐】从 GitHub 导入：
+1. 在 GitHub 上建一个空仓库（public）
+2. 在电脑上把本文件夹推上去（确保 package.json 在仓库根目录）：
+     git init
+     git add .
+     git commit -m "今天几点睡 联机版"
+     git remote add origin https://github.com/你的名字/仓库名.git
+     git push -u origin main
+   （本文件夹的 .gitignore 已自动忽略 node_modules）
+3. 注册登录 https://render.com （GitHub 账号一键登录）
+4. 点右上角【New +】→【Web Service】→ 选你的 GitHub 仓库
+5. Render 会识别到 render.yaml，自动填好配置；
+   若没识别，手动填：
+     Build Command:   npm install
+     Start Command:   npm start
+6. 点【Create Web Service】创建
+7. 等 1~2 分钟，状态变绿 LIVE 后，页面顶部就是你的网址，形如：
+     https://你的名字.onrender.com
+8. 把【完整网址】发给朋友，大家在浏览器打开就能一起玩了！
+   （在游戏主页点「🌐 联机对战」→「服务器版」即可）
+
+【备选】直接上传 zip：
+1. 用本文件夹里的「render部署包.zip」（文件都在根目录）
+   注意：不要用“压缩整个文件夹”的方式，那会多一层目录，Render 会找不到 package.json
+2. 注册登录 https://render.com →【New +】→【Web Service】→【Upload】上传 zip
+3. Build Command 填：npm install   Start Command 填：npm start
+4. 创建后等状态变 LIVE，顶部网址就是你的游戏地址
+
+───────────────────────────────────────────────
+⚠️ 部署后“打不开 / 一直转圈”怎么办
+───────────────────────────────────────────────
+按下面顺序排查：
+
+1. 看构建状态：Render 页面顶部状态是不是 LIVE？
+   - 如果构建失败/报红，点开日志看报错（最常见：package.json 不在根目录）
+   - 如果一直 Deploying 或 Failed，说明打包/构建有问题
+
+2. 确认是“服务没起来”还是“页面资源 404”：
+   - 打开 https://你的名字.onrender.com/engine.js
+     · 返回 200 → 服务正常，看第 3 条
+     · 返回 404/502 → 服务没起来，看第 4 条
+
+3. 页面能开但一直转圈 / 没反应：
+   - 用浏览器开发者工具（F12）→ Console 看红色报错
+   - 最常见：某个 JS/CSS 资源 404，导致脚本没加载完
+   - 确认游戏文件夹里所有资源文件都在（engine.js / main.js / net.js 等）
+
+4. 服务没起来（404/502）：
+   - 检查 Build Command 是不是：npm install
+   - 检查 Start Command 是不是：npm start
+   - 确认 package.json 在仓库/部署包【根目录】而不是子文件夹
+     （如果是子文件夹，Render 根本找不到入口，自然一直转圈/打不开）
+   - 检查 Render 日志（Events / Logs 标签页）里有没有报错
+
+5. 音频不响 / 报 404（如果之前部署的是中文文件名音频）：
+   - 旧版用了「背景音乐.mp3」等中文文件名，在 Linux 上可能失效
+   - 本版本已把音频统一改成英文名：bgm.mp3 / play.mp3 / draw.mp3 / hover.mp3 / select.mp3
+   - 重新部署一次即可
+
+───────────────────────────────────────────────
+其他免费平台（备选）
+───────────────────────────────────────────────
+- Koyeb：https://app.koyeb.com  配置同 Render，支持 zip 上传
+- Railway：https://railway.app  有免费额度，需要绑卡
+- 国内用户若访问国外平台慢，可搜「免费 Node 托管」「宝塔面板」
+
+祝你好梦！🌙

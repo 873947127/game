@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今天几点睡 · 联机版</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <div id="turnBanner" class="turn-banner"></div>
+    <div id="effectToast" class="effect-toast"></div>
+
+    <header class="topbar">
+      <div class="brand">🌙 今天几点睡 · 联机</div>
+      <div class="hud">
+        <span class="pill" id="roundPill">第 1 轮</span>
+        <span class="pill" id="deckPill">牌堆 --</span>
+        <span class="pill" id="discardPill">弃牌 --</span>
+        <span class="vol-wrap">
+          <input type="range" id="volSlider" min="0" max="100" value="55" title="音量" />
+        </span>
+        <button id="musicBtn" class="btn-ghost" type="button">🔇 音乐</button>
+        <button id="rulesBtn" class="btn-ghost" type="button">📜 规则</button>
+      </div>
+    </header>
+
+    <div id="opponents" class="opponents"></div>
+
+    <main class="table">
+      <div class="center-row">
+        <div class="center-block">
+          <div class="block-label">🌃 熄灯时间</div>
+          <div id="lightsOut" class="lights-out"></div>
+          <div id="roundModifiers" class="round-modifiers"></div>
+        </div>
+        <div class="center-block">
+          <div class="block-label">🂠 场上的牌（本轮累计）</div>
+          <div id="fieldStack" class="field-stack"></div>
+          <div id="fieldCount" class="field-count">0 张</div>
+        </div>
+        <div class="center-block">
+          <div class="block-label">👁 刚刚扣下的牌</div>
+          <div id="currentPlay" class="current-play"></div>
+        </div>
+      </div>
+      <div id="revealBox" class="reveal-box hidden"></div>
+      <div id="prompt" class="prompt"></div>
+      <div id="log" class="log"></div>
+    </main>
+
+    <section class="player-area">
+      <div id="playerBar" class="player-bar"></div>
+      <div id="hand" class="hand"></div>
+      <div id="actions" class="actions"></div>
+    </section>
+  </div>
+
+  <!-- 房间大厅 -->
+  <div id="roomOverlay" class="overlay">
+    <div class="modal setup">
+      <h2>🌐 联机对战</h2>
+      <p class="subtitle">朋友输入同一个房间码即可一起玩</p>
+      <div class="setup-row">
+        <span class="setup-label">你的名字</span>
+        <input type="text" id="myName" maxlength="6" value="玩家" style="background:rgba(10,14,32,.7);border:1px solid rgba(154,163,199,.3);border-radius:10px;color:var(--text);padding:8px 10px;font:inherit;min-width:120px;" />
+      </div>
+      <div class="setup-row">
+        <span class="setup-label">房间人数</span>
+        <div class="stepper">
+          <button id="mpMinus" type="button">−</button>
+          <span id="mpCount" class="stepper-val">4</span>
+          <button id="mpPlus" type="button">＋</button>
+        </div>
+      </div>
+      <button id="createRoomBtn" class="btn-primary big" type="button">🎮 创建房间</button>
+      <p class="hint">或</p>
+      <div class="setup-row">
+        <input type="text" id="joinCode" maxlength="4" placeholder="输入房间码" style="background:rgba(10,14,32,.7);border:1px solid rgba(154,163,199,.3);border-radius:10px;color:var(--text);padding:8px 10px;font:inherit;min-width:120px;text-transform:uppercase;" />
+        <button id="joinRoomBtn" class="btn-ghost" type="button">加入</button>
+      </div>
+      <div id="lobbyInfo" class="hint"></div>
+      <button id="startNetBtn" class="btn-primary big hidden" type="button">🚀 开始游戏</button>
+    </div>
+  </div>
+
+  <div id="rulesOverlay" class="overlay hidden">
+    <div class="modal rules">
+      <h2>📜 玩法速览</h2>
+      <div class="rules-body"></div>
+      <button id="closeRulesBtn" class="btn-primary" type="button">我知道了</button>
+    </div>
+  </div>
+
+  <div id="modalOverlay" class="overlay hidden">
+    <div class="modal">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div id="modalActions"></div>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="ai.js"></script>
+  <script src="bgm.js"></script>
+  <script src="sfx.js"></script>
+  <script src="net.js"></script>
+</body>
+</html>

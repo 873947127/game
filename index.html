@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今天几点睡</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 回合/轮次过渡横幅 -->
+    <div id="turnBanner" class="turn-banner"></div>
+    <!-- 技能效果提示（轮次开始技能等，自动消失） -->
+    <div id="effectToast" class="effect-toast"></div>
+
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="brand">🌙 今天几点睡</div>
+      <div class="hud">
+        <span class="pill" id="roundPill">第 1 轮</span>
+        <span class="pill" id="deckPill">牌堆 --</span>
+        <span class="pill" id="discardPill">弃牌 --</span>
+        <span class="vol-wrap">
+          <input type="range" id="volSlider" min="0" max="100" value="55" title="音量" />
+        </span>
+        <button id="musicBtn" class="btn-ghost" type="button">🔇 音乐</button>
+        <button id="rulesBtn" class="btn-ghost" type="button">📜 规则</button>
+        <button id="newGameBtn" class="btn-primary" type="button">↻ 重新开局</button>
+      </div>
+    </header>
+
+    <!-- 对手区 -->
+    <div id="opponents" class="opponents"></div>
+
+    <!-- 中央桌面 -->
+    <main class="table">
+      <div class="center-row">
+        <div class="center-block">
+          <div class="block-label">🌃 熄灯时间</div>
+          <div id="lightsOut" class="lights-out"></div>
+          <div id="roundModifiers" class="round-modifiers"></div>
+        </div>
+
+        <div class="center-block">
+          <div class="block-label">🂠 场上的牌（本轮累计）</div>
+          <div id="fieldStack" class="field-stack"></div>
+          <div id="fieldCount" class="field-count">0 张</div>
+        </div>
+
+        <div class="center-block">
+          <div class="block-label">👁 刚刚扣下的牌</div>
+          <div id="currentPlay" class="current-play"></div>
+        </div>
+      </div>
+
+      <!-- 质疑翻牌结果（全场可见） -->
+      <div id="revealBox" class="reveal-box hidden"></div>
+
+      <div id="prompt" class="prompt"></div>
+      <div id="log" class="log"></div>
+    </main>
+
+    <!-- 玩家区 -->
+    <section class="player-area">
+      <div id="playerBar" class="player-bar"></div>
+      <div id="hand" class="hand"></div>
+      <div id="actions" class="actions"></div>
+    </section>
+  </div>
+
+  <!-- 设置弹窗 -->
+  <div id="setupOverlay" class="overlay">
+    <div class="modal setup">
+      <h2>🌙 今天几点睡</h2>
+      <p class="subtitle">经典唬牌机制 × 夜间主题，看看今晚谁是真正的早睡冠军！</p>
+
+      <!-- 模式选择：单机 / 联机 -->
+      <div class="mode-select">
+        <button id="modeSingleBtn" class="type-btn on-human" type="button">🎮 单机对战</button>
+        <button id="modeOnlineBtn" class="type-btn" type="button">🌐 联机对战</button>
+      </div>
+
+      <!-- 单机模式 -->
+      <div id="singleArea">
+        <div class="setup-row">
+          <span class="setup-label">玩家人数</span>
+          <div class="stepper">
+            <button id="minusBtn" type="button">−</button>
+            <span id="playerCount" class="stepper-val">4</span>
+            <button id="plusBtn" type="button">＋</button>
+          </div>
+        </div>
+        <div id="seatList" class="seat-list"></div>
+        <button id="startGameBtn" class="btn-primary big" type="button">🎮 开始游戏</button>
+        <p class="hint">每个座位可选“真人”或“电脑”。真人在同一台电脑上轮流操作。</p>
+      </div>
+
+      <!-- 联机模式 -->
+      <div id="onlineArea" class="hidden">
+        <p class="subtitle">和朋友一起玩，选一种方式：</p>
+        <button id="toNetBtn" class="btn-primary big" type="button" style="margin-bottom:8px">🌐 服务器版（需部署，最稳定）</button>
+        <button id="toP2pBtn" class="btn-ghost big" type="button">🕸 直连版（无需部署）</button>
+        <p class="hint">服务器版需按《部署说明.txt》免费部署到云端；直连版无需部署，但网络太严格的环境可能连不上。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 规则弹窗 -->
+  <div id="rulesOverlay" class="overlay hidden">
+    <div class="modal rules">
+      <h2>📜 玩法速览</h2>
+      <div class="rules-body"></div>
+      <button id="closeRulesBtn" class="btn-primary" type="button">我知道了</button>
+    </div>
+  </div>
+
+  <!-- 通用弹窗（观星 / 预知梦 / 结算） -->
+  <div id="modalOverlay" class="overlay hidden">
+    <div class="modal">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div id="modalActions"></div>
+    </div>
+  </div>
+
+  <script src="engine.js"></script>
+  <script src="ai.js"></script>
+  <script src="bgm.js"></script>
+  <script src="sfx.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
