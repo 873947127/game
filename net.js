@@ -66,7 +66,7 @@
       let msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
       if (msg.type === "room") { roomInfo = msg; connected = true; renderLobby(); roomOverlay.classList.remove("hidden"); }
-      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; showChallengePopup(view.challengePopup); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } }
+      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; showChallengePopup(view.challengePopup); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
       else if (msg.type === "error") alert(msg.message);
     };
     ws.onclose = () => { if (connected) { alert("与服务器断开连接"); location.reload(); } };
@@ -136,6 +136,23 @@
     ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
     modalActions.appendChild(ok);
     playPopupSfx();
+    modalOverlay.classList.remove("hidden");
+  }
+  // 淘汰弹窗：任何玩家因手牌过多被淘汰，所有玩家都弹提示
+  let lastShownEliminate = null;
+  function showEliminatePopup(ep) {
+    modalTitle.textContent = "💀 淘汰出局";
+    modalBody.innerHTML = `
+      <div class="victory" style="font-size:1.05rem;line-height:1.9">
+        ${ep.name} 的手牌达到了 <b>${ep.count} 张</b>，被淘汰出局！<br>
+        <span style="font-size:0.85rem;color:var(--muted)">原因：最近一次获得手牌是“${ep.reason}”</span>
+      </div>`;
+    modalActions.innerHTML = "";
+    const ok = document.createElement("button");
+    ok.className = "btn-primary";
+    ok.textContent = "知道了";
+    ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
+    modalActions.appendChild(ok);
     modalOverlay.classList.remove("hidden");
   }
   function playViewSfx(v) {
@@ -266,7 +283,7 @@
         el.addEventListener("mouseenter", () => { if (window.SFX) { const nowT = Date.now(); if (nowT - lastHoverAt > 150) { lastHoverAt = nowT; window.SFX.play("hover"); } } });
         if (isMyTurn() && clickMode === "play") el.addEventListener("click", () => toggleSelect(c.id));
         else if (isMyTurn() && clickMode === "give") el.addEventListener("click", () => act({ type: "giveCard", cardId: c.id }));
-        else if (isMyTurn() && clickMode === "softcandy") el.addEventListener("click", () => act({ type: "pickSoftCandyCard", cardId: c.id }));
+        else if (isMyTurn() && clickMode === "softcandy" && c.id !== (view.decide && view.decide.cardId)) el.addEventListener("click", () => act({ type: "pickSoftCandyCard", cardId: c.id }));
         else el.classList.add("dim");
         el.innerHTML = `<div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}`;
         el.style.setProperty("--accent", TIME_COLORS[c.value]);
@@ -281,7 +298,12 @@
   }
   function toggleSelect(id) { if (selected.has(id)) selected.delete(id); else selected.add(id); if (window.SFX) window.SFX.play("select"); renderPlayerArea(); }
   function promptText() {
-    if (!view.decide) { const cur = view.currentPlayerId != null ? view.players[view.currentPlayerId] : null; return cur ? "⏳ " + cur.name + " 行动中…" : "等待开始…"; }
+    if (!view.decide) {
+      const cur = view.currentPlayerId != null ? view.players[view.currentPlayerId] : null;
+      if (view.currentKind === "revealLightsOut") return cur ? "🌙 等待 " + cur.name + " 翻开熄灯时间中…" : "🌙 等待翻开熄灯时间中…";
+      if (view.currentKind === "roundStartSkill") return "🌙 等待玩家使用技能中…"; // 不暴露是谁，避免泄露手牌信息
+      return cur ? "⏳ " + cur.name + " 思考中…" : "等待开始…";
+    }
     switch (view.decide.kind) {
       case "revealLightsOut": return "🌙 轮到你翻开今晚的熄灯时间！点击中间那张牌。";
       case "roundStartSkill": return "🌙 轮次准备阶段：可打出提前/延迟熄灯、宵禁/狂欢，或直接继续。";

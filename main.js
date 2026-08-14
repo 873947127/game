@@ -1259,7 +1259,7 @@
           el.addEventListener("click", () => toggleSelect(c.id));
         } else if (myTurn && clickMode === "give") {
           el.addEventListener("click", () => applyAction({ type: "giveCard", cardId: c.id }));
-        } else if (myTurn && clickMode === "softcandy") {
+        } else if (myTurn && clickMode === "softcandy" && c.id !== (state.decide && state.decide.cardId)) {
           el.addEventListener("click", () => applyAction({ type: "pickSoftCandyCard", cardId: c.id }));
         } else {
           el.classList.add("dim");

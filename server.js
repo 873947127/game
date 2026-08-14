@@ -58,6 +58,7 @@ function broadcastViews(room) {
   state.sfx.length = 0; // 事件已随各视图分发，清空避免重复弹提示
   state.challengePopup = null; // 质疑结果已随视图分发，清空避免重复弹窗
   state.passChallengePopup = null; // 未质疑结果已随视图分发，清空避免重复弹窗
+  state.eliminatePopup = null; // 淘汰结果已随视图分发，清空避免重复弹窗
 }
 function broadcastRoom(room) {
   const names = room.clients.map((c) => c.name);
@@ -73,7 +74,8 @@ function buildView(state, viewerId) {
   const players = state.players.map((p) => ({ id: p.id, name: p.name, isAI: p.isAI, alive: p.alive, handCount: p.hand.length, playedCount: p.playedCards.length }));
   const view = {
     type: "view", yourId: viewerId, round: state.round, deckCount: state.deck.length, discardCount: state.discard.length,
-    players, currentPlayerId: state.turn ? state.turn.pid : null,
+    players, currentPlayerId: state.decide && state.decide.kind !== "roundStartSkill" && state.decide.pid != null ? state.decide.pid : (state.turn ? state.turn.pid : null),
+    currentKind: state.decide ? state.decide.kind : null,
     lightsOutTime: state.lightsOutTime, curfew: state.curfew, rave: state.rave,
     tableCount: state.table.cards.length,
     currentPlay: state.currentPlay.cards.length ? { ownerId: state.currentPlay.ownerId, count: state.currentPlay.cards.length } : null,
@@ -98,6 +100,7 @@ function buildView(state, viewerId) {
       N: state.passChallengePopup.N,
       isEarly: state.passChallengePopup.isEarly,
     } : null,
+    eliminatePopup: state.eliminatePopup ? { name: state.eliminatePopup.name, count: state.eliminatePopup.count, reason: state.eliminatePopup.reason } : null,
   };
   // 每位玩家始终能看到自己的手牌（无论是否轮到自己），避免非回合时“手牌为空”
   view.yourHand = state.players[viewerId].hand.map(cardMini);
@@ -108,6 +111,7 @@ function buildView(state, viewerId) {
     if (d.ownerPid != null) view.decide.ownerPid = d.ownerPid;
     if (d.kind === "stargaze") view.decide.top3 = state.stargazeHold.map(cardMini);
     if (d.kind === "preview") { view.decide.preview = d.cards.map(cardMini); view.decide.targetPid = d.targetPid; }
+    if (d.kind === "softCandy") view.decide.cardId = d.cardId;
     if (d.kind === "endSkill" || d.kind === "failSkill") {
       view.decide.allowed = d.allowed;
       view.decide.skillInfo = d.allowed.map((id) => {
@@ -136,6 +140,8 @@ function advance(room) {
     broadcastViews(room);
   } else if (!room.aiTimer) {
     // 人机思考约 2 秒再行动，避免联机时瞬间连续出牌（与单机一致）
+    // 先把当前状态推给真人，让真人立刻看到自己的操作结果 + “电脑思考中”，而不是卡在上一帧
+    broadcastViews(room);
     room.aiTimer = setTimeout(() => {
       room.aiTimer = null;
       const st = room.state;

@@ -186,7 +186,9 @@
   function promptText() {
     if (!view.decide) {
       const cur = view.currentPlayerId != null ? view.players[view.currentPlayerId] : null;
-      return cur ? "⏳ " + cur.name + " 行动中…" : "等待开始…";
+      if (view.currentKind === "revealLightsOut") return cur ? "🌙 等待 " + cur.name + " 翻开熄灯时间中…" : "🌙 等待翻开熄灯时间中…";
+      if (view.currentKind === "roundStartSkill") return "🌙 等待玩家使用技能中…"; // 不暴露是谁，避免泄露手牌信息
+      return cur ? "⏳ " + cur.name + " 思考中…" : "等待开始…";
     }
     switch (view.decide.kind) {
       case "revealLightsOut": return "🌙 轮到你翻开今晚的熄灯时间！点击中间那张牌。";
@@ -242,7 +244,7 @@
         });
         if (isMyTurn() && clickMode === "play") el.addEventListener("click", () => toggleSelect(c.id));
         else if (isMyTurn() && clickMode === "give") el.addEventListener("click", () => sendAction({ type: "giveCard", cardId: c.id }));
-        else if (isMyTurn() && clickMode === "softcandy") el.addEventListener("click", () => sendAction({ type: "pickSoftCandyCard", cardId: c.id }));
+        else if (isMyTurn() && clickMode === "softcandy" && c.id !== (view.decide && view.decide.cardId)) el.addEventListener("click", () => sendAction({ type: "pickSoftCandyCard", cardId: c.id }));
         else el.classList.add("dim");
         el.innerHTML = `<div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}`;
         el.style.setProperty("--accent", TIME_COLORS[c.value]);
@@ -397,6 +399,24 @@
     modalOverlay.classList.remove("hidden");
   }
 
+  // 淘汰弹窗：任何玩家因手牌过多被淘汰，所有玩家都弹提示
+  let lastShownEliminate = null;
+  function showEliminatePopup(ep) {
+    modalTitle.textContent = "💀 淘汰出局";
+    modalBody.innerHTML = `
+      <div class="victory" style="font-size:1.05rem;line-height:1.9">
+        ${ep.name} 的手牌达到了 <b>${ep.count} 张</b>，被淘汰出局！<br>
+        <span style="font-size:0.85rem;color:var(--muted)">原因：最近一次获得手牌是“${ep.reason}”</span>
+      </div>`;
+    modalActions.innerHTML = "";
+    const ok = document.createElement("button");
+    ok.className = "btn-primary";
+    ok.textContent = "知道了";
+    ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
+    modalActions.appendChild(ok);
+    modalOverlay.classList.remove("hidden");
+  }
+
   /* ================== 视图构建（主机用，信息隔离） ================== */
   function cardMini(c) { return { id: c.id, value: c.value, skill: c.skill }; }
   function buildView(state, viewerId) {
@@ -404,7 +424,8 @@
     const players = state.players.map((p) => ({ id: p.id, name: p.name, isAI: p.isAI, alive: p.alive, handCount: p.hand.length, playedCount: p.playedCards.length }));
     const v = {
       yourId: viewerId, round: state.round, deckCount: state.deck.length, discardCount: state.discard.length,
-      players, currentPlayerId: state.turn ? state.turn.pid : null,
+      players, currentPlayerId: state.decide && state.decide.kind !== "roundStartSkill" && state.decide.pid != null ? state.decide.pid : (state.turn ? state.turn.pid : null),
+      currentKind: state.decide ? state.decide.kind : null,
       lightsOutTime: state.lightsOutTime, curfew: state.curfew, rave: state.rave,
       tableCount: state.table.cards.length,
       currentPlay: state.currentPlay.cards.length ? { ownerId: state.currentPlay.ownerId, count: state.currentPlay.cards.length } : null,
@@ -429,6 +450,7 @@
         N: state.passChallengePopup.N,
         isEarly: state.passChallengePopup.isEarly,
       } : null,
+      eliminatePopup: state.eliminatePopup ? { name: state.eliminatePopup.name, count: state.eliminatePopup.count, reason: state.eliminatePopup.reason } : null,
     };
     // 每位玩家始终能看到自己的手牌（无论是否轮到自己），避免非回合时“手牌为空”
     v.yourHand = state.players[viewerId].hand.map(cardMini);
@@ -439,6 +461,7 @@
       if (d.ownerPid != null) v.decide.ownerPid = d.ownerPid;
       if (d.kind === "stargaze") v.decide.top3 = state.stargazeHold.map(cardMini);
       if (d.kind === "preview") { v.decide.preview = d.cards.map(cardMini); v.decide.targetPid = d.targetPid; }
+      if (d.kind === "softCandy") v.decide.cardId = d.cardId;
       if (d.kind === "endSkill" || d.kind === "failSkill") {
         v.decide.allowed = d.allowed;
         v.decide.skillInfo = d.allowed.map((id) => {
@@ -465,6 +488,10 @@
     if (v.passChallengePopup && v.passChallengePopup !== lastShownPass && !isModalDecide()) {
       lastShownPass = v.passChallengePopup;
       showPassChallengePopup(v.passChallengePopup);
+    }
+    if (v.eliminatePopup && v.eliminatePopup !== lastShownEliminate) {
+      lastShownEliminate = v.eliminatePopup;
+      showEliminatePopup(v.eliminatePopup);
     }
   }
   // 是否需要模态操作的决定（观星/预知梦等会弹专用面板）——此时不弹通知弹窗，避免互相覆盖卡死
@@ -519,6 +546,8 @@
       hostBroadcast();
     } else if (!host.aiTimer) {
       // 人机思考约 2 秒再行动，避免联机时瞬间连续出牌（与单机一致）
+      // 先把当前状态推给真人，让真人立刻看到自己的操作结果 + “电脑思考中”，而不是卡在上一帧
+      hostBroadcast();
       host.aiTimer = setTimeout(() => {
         host.aiTimer = null;
         const st = host.state;
@@ -543,6 +572,7 @@
     state.sfx.length = 0; // 音效事件已随各视图分发
     state.challengePopup = null; // 质疑结果已随各视图分发，清空避免重复弹窗
     state.passChallengePopup = null; // 未质疑结果已随各视图分发，清空避免重复弹窗
+    state.eliminatePopup = null; // 淘汰结果已随各视图分发，清空避免重复弹窗
     applyView(hostView);
   }
 

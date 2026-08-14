@@ -347,6 +347,7 @@
     const card = drawFromDeck(state, 1)[0] || null;
     state.lightsOutCard = card;
     state.lightsOutBase = card ? card.value : null;
+    recomputeLightsOut(state); // 翻开后立即亮出卡面，技能阶段可再改
     const label = card ? TIME_NAMES[card.value] : "（牌堆已空，本轮无熄灯时间）";
     state.log.push("🌙 " + playerById(state, revealer).name + " 翻开牌堆顶，熄灯时间：" + label);
 
@@ -361,11 +362,15 @@
     setNextRoundSkillDecider(state);
   }
 
-  function finalizeLightsOut(state) {
-    let adj = state.lightsAdjust;
-    let t = state.lightsOutBase == null ? null : state.lightsOutBase + adj;
+  /** 根据「熄灯底牌 + 提前/延迟调整」实时重算熄灯时间并写回（翻开后即可显示，技能阶段再改动也即时生效） */
+  function recomputeLightsOut(state) {
+    let t = state.lightsOutBase == null ? null : state.lightsOutBase + state.lightsAdjust;
     if (t != null) t = Math.max(0, Math.min(5, t));
     state.lightsOutTime = t;
+  }
+  function finalizeLightsOut(state) {
+    recomputeLightsOut(state);
+    const t = state.lightsOutTime;
     state.log.push("💡 本轮熄灯时间定为：" + (t == null ? "（无）" : TIME_NAMES[t]) +
       (state.curfew ? "，宵禁命令生效（熬夜惩罚翻倍）" : "") +
       (state.rave ? "，狂欢派对生效（熬夜惩罚减半）" : ""));
@@ -399,10 +404,12 @@
     const sk = card.skill;
     if (sk === "tiqian") {
       state.lightsAdjust -= 1;
+      recomputeLightsOut(state);
       state.log.push(p.name + " 打出【提前熄灯】，熄灯时间提前1小时。");
       sfxPush(state, { name: "roundStartEffect", text: p.name + " 打出【提前熄灯】：本轮熄灯时间提前1小时" });
     } else if (sk === "yanchi") {
       state.lightsAdjust += 1;
+      recomputeLightsOut(state);
       state.log.push(p.name + " 打出【延迟熄灯】，熄灯时间推迟1小时。");
       sfxPush(state, { name: "roundStartEffect", text: p.name + " 打出【延迟熄灯】：本轮熄灯时间推迟1小时" });
     } else if (sk === "xiaojin") {
@@ -960,8 +967,9 @@
   }
 
   function doPickSoftCandy(state, extraCardId) {
-    const owner = playerById(state, state.turn.pid);
     const cardId = state.decide.cardId;
+    if (extraCardId === cardId) return; // 点了软糖原卡牌本身：忽略，保持等待选择（不结束技能）
+    const owner = playerById(state, state.turn.pid);
     const extra = owner.hand.find((c) => c.id === extraCardId && c.id !== cardId);
     const ruang = owner.hand.find((c) => c.id === cardId);
     if (!ruang || !extra) {
