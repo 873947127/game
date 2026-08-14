@@ -576,10 +576,26 @@
 
   function applyVolumeFromSlider() {
     const value = Number(volSlider.value) / 100;
-    if (window.BGM) window.BGM.setVolume(value);
-    if (window.SFX) window.SFX.setVolume(value);
+    if (window.SFX) {
+      window.SFX.unlock();
+      window.SFX.setVolume(value);
+    }
+    if (window.BGM) {
+      if (musicUserChoice !== "off") {
+        window.BGM.start();
+      }
+      window.BGM.setVolume(value);
+      updateMusicUI();
+    }
   }
 
+  volSlider.addEventListener("pointerdown", () => {
+    if (window.SFX) window.SFX.unlock();
+    if (window.BGM && musicUserChoice !== "off") {
+      window.BGM.start();
+      updateMusicUI();
+    }
+  });
   volSlider.addEventListener("input", applyVolumeFromSlider);
   volSlider.addEventListener("change", applyVolumeFromSlider);
   volSlider.addEventListener("pointerup", applyVolumeFromSlider);

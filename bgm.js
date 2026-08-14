@@ -90,6 +90,10 @@
 
   function setVolume(v) {
     volume = Math.max(0, Math.min(1, v));
+    if (audio) {
+      audio.muted = false;
+      audio.volume = volume;
+    }
     if (playing) fadeTo(volume * 0.9, 200);
   }
 
