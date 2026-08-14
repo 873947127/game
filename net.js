@@ -366,7 +366,7 @@
     for (const sk of Object.values(SKILLS)) (byValue[sk.value] = byValue[sk.value] || []).push(sk);
     let skillsHtml = "";
     for (let v = 0; v < 6; v++) skillsHtml += `<h3>🕐 ${TIME_NAMES[v]}</h3><ul>` + (byValue[v] || []).map((s) => `<li><b>${s.name}</b>：${attr(s.desc)}</li>`).join("") + "</ul>";
-    $("rulesOverlay").querySelector(".rules-body").innerHTML = `<h3>🌙 游戏背景</h3><p>「今天几点睡」是一款以传统唬牌规则为基础、融入夜间元素和技能设定的卡牌游戏。</p><h3>🎯 目标</h3><ul><li>最先清空手牌（0张）的玩家获胜；手牌≥21直接淘汰。</li></ul><h3>✨ 全部技能</h3>${skillsHtml}`;
+    $("rulesOverlay").querySelector(".rules-body").innerHTML = `<h3>🌙 游戏背景</h3><p>「今天几点睡」是一款多人卡牌游戏。情境设定在夜晚，每位玩家都要为今晚的入睡时间斗智斗勇——是乖乖早睡，还是偷偷熬夜？一边要伪装自己，一边还要抓出那些谎称早睡、其实在熬夜的家伙。全程充满心理博弈，让你切身体会熬夜时那种既紧张又刺激的感觉。</p><h3>🎯 目标</h3><ul><li>最先清空手牌的玩家获胜。</li><li>手牌达到 21 张及以上会直接淘汰。</li></ul><h3>🂠 卡牌</h3><ul><li>共120张，6种时间点各20张（晚9→晚10→晚11→晚12→凌晨1→凌晨2）。</li><li>每种时间点有3张技能卡，共18张技能卡。</li></ul><h3>🔁 每轮流程</h3><ul><li>首位玩家翻开牌堆顶1张作为【熄灯时间】（每轮轮换）。</li><li>然后按顺序每人一个回合：开始→摸牌→出牌→质疑→结束。</li><li>最后一名玩家回合结束后，场上的牌放入弃牌堆，开始新一轮。</li></ul><h3>😴 早睡 / 熬夜</h3><ul><li>扣着打出的牌<b>全是同一种时间</b>且<b>不晚于熄灯时间</b> → 早睡。</li><li>打出的牌<b>≥2种时间</b>或有牌<b>晚于熄灯时间</b> → 熬夜。</li><li>下家可质疑：若是早睡则质疑失败（质疑者收牌+摸等量的牌），若是熬夜则质疑成功（出牌者收牌+摸等量的牌）。</li></ul><h3>✨ 全部技能</h3>${skillsHtml}`;
   }
   $("rulesBtn").addEventListener("click", () => rulesOverlay.classList.remove("hidden"));
   $("closeRulesBtn").addEventListener("click", () => rulesOverlay.classList.add("hidden"));
