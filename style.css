@@ -11,8 +11,6 @@
   --moon: #e2e8f0;
   --text: #e8ecf8;
   --muted: #9aa3c7;
-  --night: #4f5bd5;
-  --night-2: #7c3aed;
   --red: #f87171;
   --green: #34d399;
   --card-bg: linear-gradient(160deg, #232a55, #141a3a);
@@ -168,8 +166,6 @@ button:active { transform: translateY(0); }
 }
 .badge.turn { background: rgba(255,209,102,0.2); color: var(--gold); }
 .badge.dead { background: rgba(248,113,113,0.2); color: var(--red); }
-.badge.skill { background: rgba(124,58,237,0.25); color: #c4b5fd; }
-.badge.pers { background: rgba(52,211,153,0.18); color: var(--green); border: 1px solid rgba(52,211,153,0.35); }
 
 /* ---------- 中央桌面 ---------- */
 .table {

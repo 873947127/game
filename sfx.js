@@ -31,8 +31,9 @@
     }
   }
 
-  function playMp3(el) {
+  function playMp3(el, volumeScale = 1) {
     if (!el) return;
+    el.volume = Math.max(0, Math.min(1, volumeScale));
     el.currentTime = 0;
     const p = el.play();
     if (p && p.catch) p.catch(function () {});
@@ -165,6 +166,8 @@
   const SOUNDS = {
     // 按钮：圆润的小气泡“啵”
     click() { blub(520, now(), 0.09, 0.09, 250); },
+    // 弹窗：一声清晰的水滴提示音
+    popup() { plink(980, now(), 0.18, 0.11); plink(1360, now() + 0.07, 0.18, 0.08); },
     // 质疑翻牌：气泡缓缓上升（上扫）
     reveal() { blub(300, now(), 0.38, 0.1, 950); },
     // 质疑成功：两滴清澈上扬的水滴
@@ -192,11 +195,15 @@
     }
     if (name === "hover") {
       if (!hoverAudio) hoverAudio = getAudio(HOVER_SRC);
-      if (hoverAudio) { playMp3(hoverAudio); return; }
+      if (hoverAudio) { playMp3(hoverAudio, 0.125); return; }
+    }
+    if (name === "reveal") {
+      if (!selectAudio) selectAudio = getAudio(SELECT_SRC);
+      if (selectAudio) { playMp3(selectAudio, 0.5); return; }
     }
     if (name === "select") {
       if (!selectAudio) selectAudio = getAudio(SELECT_SRC);
-      if (selectAudio) { playMp3(selectAudio); return; }
+      if (selectAudio) { playMp3(selectAudio, 0.5); return; }
     }
     if (!ensure()) return;
     if (ctx.state === "suspended") ctx.resume();

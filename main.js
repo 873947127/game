@@ -18,8 +18,6 @@
   let lastRevealRef = null;    // 上一次渲染过的翻牌记录（用于翻牌动画）
   let lastRound = 0;           // 用于轮次/回合过渡横幅
   let lastTurnPid = null;
-  let turnJustChanged = false;
-  let lastPromptText = null;
   let winAnnounced = false;    // 胜利音效只播一次
   let shownChallengePopup = null; // 已经展示过的质疑结果弹窗
   let shownPassChallengePopup = null; // 已经展示过的“下家未质疑”弹窗
@@ -30,8 +28,7 @@
   let tutorialStep = 0;
   let tutorialAiBlocked = false;
   let tutorialTimer = null;
-  let tutorialFinished = false; // 教程完成弹窗期间，阻止 pump 弹出“再来一局”结算
-  const TUTORIAL_KEY = "sleep-tutorial-seen";
+  let tutorialFinished = false; // 教程完成弹窗期间，阻止 pump 弹出”再来一局”结算
 
   function clearTutorialTimer() {
     if (tutorialTimer) {
@@ -118,6 +115,12 @@
     });
   }
 
+  function playPopupSfx() {
+    if (!window.SFX) return;
+    window.SFX.unlock();
+    window.SFX.play("popup");
+  }
+
   function showTutorialIntroModal() {
     tutorialMode = false;
     tutorialStep = 0;
@@ -140,7 +143,6 @@
     yesBtn.className = "btn-primary";
     yesBtn.textContent = "✅ 是，进入教程";
     yesBtn.addEventListener("click", () => {
-      localStorage.setItem(TUTORIAL_KEY, "1");
       modalOverlay.classList.add("hidden");
       startTutorialGame();
     });
@@ -150,13 +152,13 @@
     noBtn.className = "btn-ghost";
     noBtn.textContent = "否，直接开始";
     noBtn.addEventListener("click", () => {
-      localStorage.setItem(TUTORIAL_KEY, "1");
       modalOverlay.classList.add("hidden");
       setupOverlay.classList.remove("hidden");
       renderSetup();
       showRulesPanel("rules");
     });
     modalActions.appendChild(noBtn);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 
@@ -193,7 +195,7 @@
     state.players[0].playedCards = [];
     state.players[1].playedCards = [];
     state.currentPlay = { cards: [], ownerId: 0, isEarly: false };
-    state.table = { cards: [], ownerId: null, isEarly: false, revealed: false };
+    state.table = { cards: [] };
     state.deck = [
       { id: "t-d-1", value: 0, skill: null },
       { id: "t-d-2", value: 2, skill: null },
@@ -239,6 +241,7 @@
       }
     });
     modalActions.appendChild(btn);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 
@@ -788,8 +791,6 @@
     lastRevealRef = null;
     lastRound = 0;
     lastTurnPid = null;
-    turnJustChanged = false;
-    lastPromptText = null;
     winAnnounced = false;
     shownChallengePopup = null;
     shownPassChallengePopup = null;
@@ -820,7 +821,6 @@
         return;
       }
       if (player && player.isAI) {
-        if (tutorialAiBlocked) return;
         const fast = window.__aiDelay != null;
         let delay;
         if (fast) {
@@ -897,7 +897,6 @@
         // 正式游戏中电脑思考约 2 秒，教程中继续保留 4 秒。
         delay = tutorialMode ? 4000 + Math.random() * 800 : 2000 + Math.random() * 600;
       }
-      turnJustChanged = false;
       aiTimer = setTimeout(() => {
         const action = ai.aiAct(state);
         engine.act(state, action);
@@ -914,6 +913,11 @@
   function applyAction(action) {
     stopAI();
     if (tutorialMode) {
+      if (window.SFX) {
+        window.SFX.unlock();
+        if (action.type === "revealLightsOut") window.SFX.play("reveal");
+        else if (action.type === "playCards") window.SFX.play("playCards");
+      }
       clearTutorialTimer();
       handleTutorialAction(action);
       selected.clear();
@@ -972,11 +976,9 @@
     if (state.round !== lastRound) {
       lastRound = state.round;
       if (state.turn) lastTurnPid = state.turn.pid;
-      turnJustChanged = true;
       showBanner("🌙 第 " + state.round + " 轮");
     } else if (state.turn && state.turn.pid !== lastTurnPid) {
       lastTurnPid = state.turn.pid;
-      turnJustChanged = true;
       const p = state.players[lastTurnPid];
       showBanner(p.isAI ? "🤖 " + p.name + " 的回合" : "🌟 你的回合");
     }
@@ -1334,6 +1336,8 @@
         return `💤 ${p.name} 打出【该补觉了】：选一张你的手牌交给对方。`;
       case "failSkill":
         return `😴 ${p.name} 质疑失败但成功脱身！可发动【瞌睡虫 / 午夜凶铃】，或跳过。`;
+      case "bellDraw":
+        return `🔔 ${p.name} 正在被【午夜凶铃】纠缠：点击屏幕每次摸1张，直到摸到晚上12点或手牌达到20张。`;
       case "endSkill":
         return `🌅 ${p.name} 结束阶段：可发动技能牌（未被质疑），或跳过。`;
       case "skillTarget":
@@ -1486,6 +1490,18 @@
         break;
       }
 
+      case "bellDraw": {
+        clickMode = null;
+        const drawBtn = document.createElement("button");
+        drawBtn.className = "btn-primary";
+        drawBtn.textContent = "🔔 点击摸1张";
+        drawBtn.addEventListener("click", () => applyAction({ type: "drawBell" }));
+        actionsEl.appendChild(drawBtn);
+        hint.textContent = "每次点击都摸1张，直到摸到晚上12点或手牌达到20张上限";
+        actionsEl.appendChild(hint);
+        break;
+      }
+
       case "endSkill": {
         clickMode = null;
         for (const id of d.allowed) {
@@ -1586,6 +1602,7 @@
       applyAction({ type: "confirmSeen" });
     });
     modalActions.appendChild(ok);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 
@@ -1616,6 +1633,7 @@
       pump();
     });
     modalActions.appendChild(ok);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 
@@ -1635,6 +1653,7 @@
       pump();
     });
     modalActions.appendChild(ok);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 
@@ -1679,6 +1698,7 @@
       renderSetup();
     });
     modalActions.appendChild(change);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 

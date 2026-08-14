@@ -35,7 +35,7 @@
     guanxing:    { id: "guanxing",    name: "观星",       value: 2, trigger: "reaction", desc: "当你质疑上家成功时，可直接将这张牌从手牌中打出，使你在下一个自己的摸牌阶段中的行动变为：观看抽牌堆顶的3张牌，获得其中1张，然后将剩下的牌以任意顺序放回抽牌堆顶端。" },
     yanzhao:     { id: "yanzhao",     name: "蒸汽眼罩",   value: 3, trigger: "challengedSuccess", desc: "若你本回合扣置打出了这张牌，且被质疑成功，则你本次从抽牌堆摸牌时可以少摸2张牌。" },
     keshui:      { id: "keshui",      name: "瞌睡虫",     value: 3, trigger: "challengedFail", desc: "若你本回合扣置打出了这张牌，且被质疑失败，则你可以令下家跳过其下一个回合的出牌阶段。" },
-    xiongling:   { id: "xiongling",   name: "午夜凶铃",   value: 3, trigger: "challengedFail", desc: "若你本回合扣置打出了这张牌，且被质疑失败，则你可以令下家的下一个回合的摸牌阶段行动变为：从牌堆顶连续摸牌，直到摸到“晚上12点”为止。（需展示摸到的“晚上12点”）" },
+    xiongling:   { id: "xiongling",   name: "午夜凶铃",   value: 3, trigger: "challengedFail", desc: "若你本回合扣置打出了这张牌，且被质疑失败，则你可以令下家的下一个回合的摸牌阶段行动变为：从牌堆顶摸牌，每次点击屏幕摸1张，直到摸到“晚上12点”或手牌达到20张上限为止。（需展示摸到的“晚上12点”或达到20张）" },
     kafei:       { id: "kafei",       name: "咖啡",       value: 4, trigger: "reaction", desc: "当你质疑上家成功时，可以直接将这张牌从手牌中打出，使你跳过下一个自己回合中的摸牌阶段。" },
     runiunai:    { id: "runiunai",    name: "热牛奶",     value: 4, trigger: "reaction", desc: "当你质疑上家成功时，可以直接将这张牌从手牌中打出，使你下一个回合中的“熄灯时间”推迟1小时。" },
     tiqian:      { id: "tiqian",      name: "提前熄灯",   value: 4, trigger: "roundStart", desc: "可在轮次开始阶段确定“熄灯时间”后直接打出本卡牌，使本轮次的“熄灯时间”提前1小时。（无法早于晚上9点）" },
@@ -128,10 +128,8 @@
         isAI: !!p.isAI,
         hand: deck.splice(0, 5),
         alive: true,
-        eliminated: false,
         pe: { skipDraw: false, stargaze: false, bell: false, skipPlay: false },
         hotMilk: 0,
-        personality: base ? base.name : "",
         risk: base ? Math.max(0.1, Math.min(0.62, base.risk + (rnd() - 0.5) * 0.06)) : 0.3,
         bluff: base ? base.bluff : 0,
         shed: base ? base.shed : 3,
@@ -143,7 +141,6 @@
       };
     });
     const state = {
-      seed,
       rnd,
       deck,
       discard: [],
@@ -160,7 +157,7 @@
       lightsAdjust: 0,
       curfew: false,
       rave: false,
-      table: { cards: [], ownerId: null, isEarly: false, revealed: false },
+      table: { cards: [] },
       currentPlay: { cards: [], ownerId: null, isEarly: false }, // 当前玩家刚打出的那组牌
       pendingPenalty: 0,
       pendingChallenger: null,
@@ -178,7 +175,6 @@
       winner: null,
       actionCount: 0,
       log: [],
-      gameOver: false,
       sfx: [], // 最近发生的音效事件（供界面播放）
     };
     // 供 AI 决策使用的便捷函数（绑定到本局 state）
@@ -274,7 +270,6 @@
       if (!p.alive) continue;
       if (p.hand.length >= 21) {
         p.alive = false;
-        p.eliminated = true;
         state.discard.push(...p.hand);
         state.log.push("💀 " + p.name + " 手牌达到 " + p.hand.length + " 张，被淘汰出局！");
         state.eliminatePopup = { name: p.name, count: p.hand.length, reason: p.lastGain || "摸牌" };
@@ -285,7 +280,6 @@
     const alive = alivePlayers(state);
     if (alive.length === 1) {
       state.winner = alive[0].id;
-      state.gameOver = true;
       return;
     }
     // 回合外手牌为 0 → 立即获胜
@@ -293,7 +287,6 @@
     for (const p of alive) {
       if (p.id !== turnPid && p.hand.length === 0) {
         state.winner = p.id;
-        state.gameOver = true;
         return;
       }
     }
@@ -330,7 +323,7 @@
     state.curfew = false;
     state.rave = false;
     state.lightsAdjust = 0;
-    state.table = { cards: [], ownerId: null, isEarly: false, revealed: false };
+    state.table = { cards: [] };
     state.currentPlay = { cards: [], ownerId: null, isEarly: false };
     state.lightsOutCard = null;
     state.lightsOutBase = null;
@@ -451,7 +444,6 @@
     if (p.alive && p.hand.length === 0) {
       // 理论不会发生，防卡死兜底
       state.winner = pid;
-      state.gameOver = true;
       state.decide = { kind: "gameover" };
       return;
     }
@@ -484,8 +476,7 @@
         p.pe.bell = false;
         doBellDraw(state, p);
         if (state.winner != null) return;
-        t.phase = "play";
-        return advanceTurnPhase(state);
+        return;
       }
       if (p.pe.stargaze) {
         p.pe.stargaze = false;
@@ -516,22 +507,42 @@
   }
 
   function doBellDraw(state, p) {
-    let n = 0;
-    while (n < 200) {
-      const card = drawFromDeck(state, 1)[0];
-      if (!card) break;
-      p.hand.push(card);
-      p.lastGain = "被【午夜凶铃】纠缠连续摸牌";
-      n += 1;
-      if (card.value === 3) {
-        state.log.push("🔔 " + p.name + " 被【午夜凶铃】纠缠，摸到晚上12点：" + cardLabel(card) + "，停止摸牌。");
-        break;
+    state.log.push("🔔 " + p.name + " 被【午夜凶铃】纠缠，点击屏幕开始摸牌：每次摸1张，直到摸到晚上12点或手牌达到20张。");
+    state.decide = { kind: "bellDraw", pid: p.id };
+  }
+
+  function doBellDrawStep(state, p) {
+    const card = drawFromDeck(state, 1)[0];
+    if (!card) {
+      state.log.push("🔔 " + p.name + " 摸遍牌堆也没找到晚上12点，摸牌结束。");
+      if (state.turn) {
+        state.turn.phase = "play";
+        advanceTurnPhase(state);
       }
-      if (n % 8 === 0) state.log.push(p.name + " 被【午夜凶铃】纠缠，连续摸牌中……");
+      return;
     }
-    if (n >= 200 || (n > 0 && p.hand[p.hand.length - 1].value !== 3)) {
-      state.log.push(p.name + " 摸遍牌堆也没找到晚上12点，摸牌结束。");
+    p.hand.push(card);
+    p.lastGain = "被【午夜凶铃】纠缠连续摸牌";
+    const reachedTwelve = card.value === 3;
+    const reachedLimit = p.hand.length >= 20;
+    if (reachedTwelve) {
+      state.log.push("🔔 " + p.name + " 被【午夜凶铃】纠缠，摸到晚上12点：" + cardLabel(card) + "，停止摸牌。");
+      afterHandChanged(state);
+      if (state.winner != null) return;
+      state.turn.phase = "play";
+      advanceTurnPhase(state);
+      return;
     }
+    if (reachedLimit) {
+      state.log.push("🔔 " + p.name + " 被【午夜凶铃】纠缠，手牌达到上限20张，停止摸牌。");
+      afterHandChanged(state);
+      if (state.winner != null) return;
+      state.turn.phase = "play";
+      advanceTurnPhase(state);
+      return;
+    }
+    state.log.push("🔔 " + p.name + " 被【午夜凶铃】纠缠，点击屏幕再摸1张……");
+    state.decide = { kind: "bellDraw", pid: p.id };
     afterHandChanged(state);
   }
 
@@ -614,7 +625,6 @@
       N: state.currentPlay.cards.length,
       isEarly: state.currentPlay.isEarly,
     };
-    state.table.revealed = false;
     const played = state.currentPlay.cards;
     // 桃花源需要本回合扣置打出包含它的 3 张及以上才可触发
     const endSkills = played.filter((c) =>
@@ -639,7 +649,6 @@
     const N = cards.length;
     // 出牌时已按该玩家的个人熄灯时间（含热牛奶）判定了早睡/熬夜，质疑沿用同一结果
     const isEarly = state.currentPlay.isEarly;
-    state.table.revealed = true;
     const labels = cards.map(cardLabel).join("，");
     state.pendingChallenger = challenger.id;
     sfxPush(state, "reveal");
@@ -830,8 +839,8 @@
       skillToast(state, owner.name, "keshui", nextp.name + " 下回合将跳过出牌阶段");
     } else if (card.skill === "xiongling") {
       nextp.pe.bell = true;
-      state.log.push("🔔 " + owner.name + " 发动【午夜凶铃】！" + nextp.name + " 下回合将一直摸牌直到摸到晚12。");
-      skillToast(state, owner.name, "xiongling", nextp.name + " 下回合将一直摸牌直到摸到晚12");
+      state.log.push("🔔 " + owner.name + " 发动【午夜凶铃】！" + nextp.name + " 下回合将在点击屏幕后每次摸1张，直到摸到晚12或手牌达到20张上限。");
+      skillToast(state, owner.name, "xiongling", nextp.name + " 下回合每次点击摸1张，直到摸到晚12或20张上限");
     }
     sfxPush(state, "skill");
     if (state.failSkills.length) {
@@ -1000,7 +1009,6 @@
     // 回合结束阶段手牌为 0 → 获胜
     if (owner.alive && owner.hand.length === 0) {
       state.winner = owner.id;
-      state.gameOver = true;
       state.decide = { kind: "gameover" };
       state.log.push("🏆 " + owner.name + " 的手牌清空，第一个睡着了……获胜！");
       return;
@@ -1030,7 +1038,7 @@
     if (state.lightsOutCard) {
       state.discard.push(state.lightsOutCard);
     }
-    state.table = { cards: [], ownerId: null, isEarly: false, revealed: false };
+    state.table = { cards: [] };
     state.currentPlay = { cards: [], ownerId: null, isEarly: false };
     state.lightsOutCard = null;
     for (const p of state.players) p.playedCards = [];
@@ -1043,7 +1051,6 @@
         if (!best || p.hand.length < best.hand.length) best = p;
       }
       state.winner = best.id;
-      state.gameOver = true;
       state.decide = { kind: "gameover" };
       state.log.push("🏆 轮数已达上限，手牌最少的 " + best.name + " 获胜（兜底规则）。");
       return;
@@ -1096,7 +1103,6 @@
         if (!best || p.hand.length < best.hand.length) best = p;
       }
       state.winner = best.id;
-      state.gameOver = true;
       state.decide = { kind: "gameover" };
       return state;
     }
@@ -1128,6 +1134,9 @@
       case "reaction":
         if (action.type === "playReaction") doPlayReaction(state, action.cardId);
         else if (action.type === "passReaction") finalizeSuccessPenalty(state);
+        break;
+      case "bellDraw":
+        if (action.type === "drawBell") doBellDrawStep(state, playerById(state, d.pid));
         break;
       case "giveCard":
         if (action.type === "giveCard") doGiveCard(state, action.cardId);

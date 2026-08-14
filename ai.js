@@ -19,6 +19,7 @@
       case "challenge": return aiChallenge(state, d);
       case "yanzhao": return { type: "useYanzhao" };
       case "reaction": return aiReaction(state, d);
+      case "bellDraw": return { type: "drawBell" };
       case "giveCard": return aiGiveCard(state, d.pid);
       case "failSkill": return aiFailSkill(state, d);
       case "endSkill": return aiEndSkill(state, d);

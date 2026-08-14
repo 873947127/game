@@ -48,6 +48,12 @@
   const effectToastEl = $("effectToast"), rulesOverlay = $("rulesOverlay");
 
   function attr(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function playPopupSfx() {
+    if (!window.SFX) return;
+    window.SFX.unlock();
+    window.SFX.play("popup");
+  }
+
   function showToast(text) {
     effectToastEl.textContent = text;
     effectToastEl.classList.remove("show");
@@ -194,6 +200,7 @@
       case "reaction": return "⚡ 你质疑成功！可打出反应技能牌，或跳过。";
       case "giveCard": return "💤 打出【该补觉了】：选一张你的手牌交给对方。";
       case "failSkill": return "😴 你质疑失败但成功脱身！可发动【瞌睡虫/午夜凶铃】或跳过。";
+      case "bellDraw": return "🔔 你被【午夜凶铃】纠缠：点击屏幕每次摸1张，直到摸到晚上12点或手牌达到20张。";
       case "endSkill": return "🌅 你的结束阶段：可发动技能牌（未被质疑）或跳过。";
       case "skillTarget": return "🎯 选择一名玩家作为目标。";
       case "softCandy": return "🍬 发动【褪黑素软糖】：再选一张手牌一起弃掉。";
@@ -288,11 +295,11 @@
       case "challenge": addBtn("🔍 质疑他！", "btn-danger", () => sendAction({ type: "challenge" })); addBtn("🙈 相信他（不质疑）", "btn-ghost", () => sendAction({ type: "passChallenge" })); break;
       case "yanzhao": addBtn("😷 使用蒸汽眼罩", "btn-skill", () => sendAction({ type: "useYanzhao" })); addBtn("不使用", "btn-ghost", () => sendAction({ type: "skipYanzhao" })); break;
       case "reaction": for (const sk of d.allowed) { const c = hand.find((x) => x.skill === sk); if (c) addSkillBtn(sk, () => sendAction({ type: "playReaction", cardId: c.id })); } addBtn("跳过", "btn-ghost", () => sendAction({ type: "passReaction" })); break;
-      case "giveCard": clickMode = "give"; addBtn("点击一张手牌交给对方", "btn-ghost", () => {}); break;
+      case "giveCard": clickMode = "give"; break;
       case "failSkill": for (const info of d.skillInfo || []) if (info.skill) addSkillBtn(info.skill, () => sendAction({ type: "useFailSkill", cardId: info.id })); addBtn("跳过", "btn-ghost", () => sendAction({ type: "passFailSkill" })); break;
       case "endSkill": for (const info of d.skillInfo || []) if (info.skill) addSkillBtn(info.skill, () => sendAction({ type: "useEndSkill", cardId: info.id })); addBtn("跳过", "btn-ghost", () => sendAction({ type: "passEndSkill" })); break;
       case "skillTarget": targetMode = true; renderOpponents(); break;
-      case "softCandy": clickMode = "softcandy"; addBtn("点击一张手牌一起弃掉", "btn-ghost", () => {}); break;
+      case "softCandy": clickMode = "softcandy"; break;
       case "stargaze": showStargaze(d); break;
       case "preview": showPreview(d); break;
       default: break;
@@ -367,6 +374,7 @@
     ok.textContent = "知道了";
     ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
     modalActions.appendChild(ok);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
   // 下家未质疑弹窗：只给“打出牌的人”显示提示
@@ -473,6 +481,7 @@
     again.textContent = "再来一局";
     again.addEventListener("click", () => { modalOverlay.classList.add("hidden"); location.reload(); });
     modalActions.appendChild(again);
+    playPopupSfx();
     modalOverlay.classList.remove("hidden");
   }
 
@@ -622,7 +631,6 @@
   function updateHostStatus() {
     if (!host) return;
     const conn = host.peers.filter((p) => p.connected).length;
-    const ready = conn >= Math.min(total - 1, host.peers.length) || conn >= total - 1;
     $("hostStatus").textContent = "已连接 " + conn + " / " + (total - 1) + " 个朋友" +
       (host.peers.filter((p) => p.connected).map((p) => "｜" + p.name).join("") || "");
     $("startP2pBtn").classList.toggle("hidden", conn < Math.min(total - 1, host.peers.length));
