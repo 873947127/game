@@ -263,10 +263,23 @@
     if (!d) return null;
     switch (d.kind) { case "play": return "play"; case "giveCard": return "give"; case "softCandy": return "softcandy"; default: return null; }
   }
+  // 可“点击原卡牌直接发动”的技能（轮次开始技能 / 反应技能）：cardId -> action
+  function skillCardActions(d) {
+    const map = {};
+    if (!d) return map;
+    const hand = view.yourHand || [];
+    if (d.kind === "roundStartSkill") {
+      for (const c of hand) if (c.skill && ["tiqian", "yanchi", "xiaojin", "kuanghuan"].includes(c.skill)) map[c.id] = { type: "playRoundStart", cardId: c.id };
+    } else if (d.kind === "reaction") {
+      for (const c of hand) if (c.skill && (d.allowed || []).includes(c.skill)) map[c.id] = { type: "playReaction", cardId: c.id };
+    }
+    return map;
+  }
   function renderPlayerArea() {
     const hand = view.yourHand || [];
     const me = myPlayer();
     clickMode = isMyTurn() ? clickModeFor(view.decide) : null;
+    const skillMap = isMyTurn() ? skillCardActions(view.decide) : {};
     playerBarEl.innerHTML = `<span class="name">${me ? me.name : "你"} ${isMyTurn() ? "👈 你的回合" : ""}</span>
       <span class="info">手牌 ${hand.length} 张 · 扣牌 ${me ? me.playedCount : 0}</span>`;
     handEl.innerHTML = "";
@@ -284,6 +297,7 @@
         if (isMyTurn() && clickMode === "play") el.addEventListener("click", () => toggleSelect(c.id));
         else if (isMyTurn() && clickMode === "give") el.addEventListener("click", () => act({ type: "giveCard", cardId: c.id }));
         else if (isMyTurn() && clickMode === "softcandy" && c.id !== (view.decide && view.decide.cardId)) el.addEventListener("click", () => act({ type: "pickSoftCandyCard", cardId: c.id }));
+        else if (isMyTurn() && skillMap[c.id]) { el.classList.add("playable"); el.addEventListener("click", () => act(skillMap[c.id])); }
         else el.classList.add("dim");
         el.innerHTML = `<div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}`;
         el.style.setProperty("--accent", TIME_COLORS[c.value]);
@@ -322,7 +336,7 @@
     }
   }
   function addBtn(text, cls, onClick) { const b = document.createElement("button"); b.className = cls; b.textContent = text; b.addEventListener("click", onClick); actionsEl.appendChild(b); }
-  function addSkillBtn(skill, onClick) { const b = document.createElement("button"); b.className = "btn-skill"; b.innerHTML = `${SKILLS[skill].name} <small>${SKILLS[skill].desc}</small>`; b.addEventListener("click", onClick); actionsEl.appendChild(b); }
+  function addSkillBtn(skill, onClick) { const b = document.createElement("button"); b.className = "btn-skill"; b.innerHTML = `${SKILLS[skill].name}（点击发动） <small>${SKILLS[skill].desc}</small>`; b.addEventListener("click", onClick); actionsEl.appendChild(b); }
   function renderActions(d) {
     actionsEl.innerHTML = "";
     clickMode = null; targetMode = false;

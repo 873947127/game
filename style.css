@@ -437,6 +437,16 @@ button:active { transform: translateY(0); }
   transform: translateY(-8px);
 }
 .hand-card.dim { opacity: 0.45; pointer-events: none; }
+/* 可直接点击原卡牌发动的技能牌：紫色高亮呼吸提示 */
+.hand-card.playable {
+  border-color: #7c3aed;
+  cursor: pointer;
+  animation: playablePulse 1.4s ease-in-out infinite;
+}
+@keyframes playablePulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(124,58,237,0.35), 0 0 14px rgba(124,58,237,0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(124,58,237,0.55), 0 0 24px rgba(124,58,237,0.8); }
+}
 
 /* 摸牌出场动画：新牌依次从牌堆方向滑入（animation-delay 错开，backwards 让等待的牌隐藏） */
 .hand-card.just-drawn {

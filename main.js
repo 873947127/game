@@ -1214,6 +1214,17 @@
       default: return null;
     }
   }
+  // 可“点击原卡牌直接发动”的技能（轮次开始技能 / 反应技能）：cardId -> action
+  function skillCardActions(d, hand) {
+    const map = {};
+    if (!d) return map;
+    if (d.kind === "roundStartSkill") {
+      for (const c of hand) if (c.skill && ["tiqian", "yanchi", "xiaojin", "kuanghuan"].includes(c.skill)) map[c.id] = { type: "playRoundStart", cardId: c.id };
+    } else if (d.kind === "reaction") {
+      for (const c of hand) if (c.skill && (d.allowed || []).includes(c.skill)) map[c.id] = { type: "playReaction", cardId: c.id };
+    }
+    return map;
+  }
 
   function renderPlayerArea() {
     const bp = bottomPlayer();
@@ -1221,6 +1232,7 @@
     const myTurn = isMyTurn;
     // 先确定操作模式，再画手牌（否则牌会被画成不可点击的灰暗状态）
     clickMode = myTurn ? clickModeFor(state.decide) : null;
+    const skillMap = myTurn ? skillCardActions(state.decide, bp.hand) : {};
     playerBarEl.innerHTML = `
       <span class="name">${bp.name} ${myTurn ? "👈 你的回合" : ""}</span>
       <span class="info">手牌 ${bp.hand.length} 张${myTurn ? " · 熄灯时间：" + (state.lightsOutTime == null ? "无" : engine.TIME_NAMES[state.lightsOutTime]) : ""}</span>`;
@@ -1261,6 +1273,9 @@
           el.addEventListener("click", () => applyAction({ type: "giveCard", cardId: c.id }));
         } else if (myTurn && clickMode === "softcandy" && c.id !== (state.decide && state.decide.cardId)) {
           el.addEventListener("click", () => applyAction({ type: "pickSoftCandyCard", cardId: c.id }));
+        } else if (myTurn && skillMap[c.id]) {
+          el.classList.add("playable");
+          el.addEventListener("click", () => applyAction(skillMap[c.id]));
         } else {
           el.classList.add("dim");
         }
@@ -1369,7 +1384,7 @@
         for (const c of skills) {
           const b = document.createElement("button");
           b.className = "btn-skill";
-          b.innerHTML = `${engine.SKILLS[c.skill].name} <small>${engine.SKILLS[c.skill].desc}</small>`;
+          b.innerHTML = `${engine.SKILLS[c.skill].name}（点击发动） <small>${engine.SKILLS[c.skill].desc}</small>`;
           b.addEventListener("click", () => applyAction({ type: "playRoundStart", cardId: c.id }));
           actionsEl.appendChild(b);
         }
@@ -1454,7 +1469,7 @@
           if (!card) continue;
           const b = document.createElement("button");
           b.className = "btn-skill";
-          b.innerHTML = `${engine.SKILLS[sk].name} <small>${engine.SKILLS[sk].desc}</small>`;
+          b.innerHTML = `${engine.SKILLS[sk].name}（点击发动） <small>${engine.SKILLS[sk].desc}</small>`;
           b.addEventListener("click", () => applyAction({ type: "playReaction", cardId: card.id }));
           actionsEl.appendChild(b);
         }
@@ -1478,7 +1493,7 @@
         for (const card of state.failSkills) {
           const b = document.createElement("button");
           b.className = "btn-skill";
-          b.innerHTML = `${engine.SKILLS[card.skill].name} <small>${engine.SKILLS[card.skill].desc}</small>`;
+          b.innerHTML = `${engine.SKILLS[card.skill].name}（点击发动） <small>${engine.SKILLS[card.skill].desc}</small>`;
           b.addEventListener("click", () => applyAction({ type: "useFailSkill", cardId: card.id }));
           actionsEl.appendChild(b);
         }
@@ -1510,7 +1525,7 @@
           if (!card) continue;
           const b = document.createElement("button");
           b.className = "btn-skill";
-          b.innerHTML = `${engine.SKILLS[card.skill].name} <small>${engine.SKILLS[card.skill].desc}</small>`;
+          b.innerHTML = `${engine.SKILLS[card.skill].name}（点击发动） <small>${engine.SKILLS[card.skill].desc}</small>`;
           b.addEventListener("click", () => applyAction({ type: "useEndSkill", cardId: card.id }));
           actionsEl.appendChild(b);
         }
