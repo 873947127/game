@@ -574,10 +574,16 @@
     updateMusicUI();
   });
 
-  volSlider.addEventListener("input", () => {
-    if (window.BGM) window.BGM.setVolume(volSlider.value / 100);
-    if (window.SFX) window.SFX.setVolume(volSlider.value / 100);
-  });
+  function applyVolumeFromSlider() {
+    const value = Number(volSlider.value) / 100;
+    if (window.BGM) window.BGM.setVolume(value);
+    if (window.SFX) window.SFX.setVolume(value);
+  }
+
+  volSlider.addEventListener("input", applyVolumeFromSlider);
+  volSlider.addEventListener("change", applyVolumeFromSlider);
+  volSlider.addEventListener("pointerup", applyVolumeFromSlider);
+  volSlider.addEventListener("touchend", applyVolumeFromSlider, { passive: true });
   updateMusicUI();
 
   // 任意按钮点击都播放清脆的按键音（事件委托）

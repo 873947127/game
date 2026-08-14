@@ -698,10 +698,15 @@
   const volSlider = $("volSlider");
   function updateMusicUI() { if (window.BGM) musicBtn.textContent = window.BGM.isOn() ? "🔊 音乐" : "🔇 音乐"; }
   musicBtn.addEventListener("click", () => { if (window.BGM) { window.BGM.toggle(); updateMusicUI(); } });
-  volSlider.addEventListener("input", () => {
-    if (window.BGM) window.BGM.setVolume(volSlider.value / 100);
-    if (window.SFX) window.SFX.setVolume(volSlider.value / 100);
-  });
+  function applyVolumeFromSlider() {
+    const value = Number(volSlider.value) / 100;
+    if (window.BGM) window.BGM.setVolume(value);
+    if (window.SFX) window.SFX.setVolume(value);
+  }
+  volSlider.addEventListener("input", applyVolumeFromSlider);
+  volSlider.addEventListener("change", applyVolumeFromSlider);
+  volSlider.addEventListener("pointerup", applyVolumeFromSlider);
+  volSlider.addEventListener("touchend", applyVolumeFromSlider, { passive: true });
   updateMusicUI();
   if (document.addEventListener) {
     document.addEventListener("click", (e) => {

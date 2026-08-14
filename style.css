@@ -105,6 +105,8 @@ button:active { transform: translateY(0); }
   width: 74px;
   accent-color: var(--gold);
   cursor: pointer;
+  touch-action: pan-y;
+  -webkit-appearance: slider-horizontal;
 }
 .btn-danger {
   background: linear-gradient(135deg, #f87171, #dc2626);
