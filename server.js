@@ -120,15 +120,30 @@ function buildView(state, viewerId) {
   return view;
 }
 
+function clearAiTimer(room) {
+  if (room.aiTimer) { clearTimeout(room.aiTimer); room.aiTimer = null; }
+}
+
 function advance(room) {
   const state = room.state;
   if (!state) return;
-  if (state.winner != null) { broadcastViews(room); return; }
+  if (state.winner != null) { clearAiTimer(room); broadcastViews(room); return; }
   const d = state.decide;
   if (!d || d.kind === "gameover") return;
   const ws = room.engineToWs[d.pid];
-  if (ws && ws.readyState === 1) broadcastViews(room);
-  else { engine.act(state, ai.aiAct(state)); advance(room); }
+  if (ws && ws.readyState === 1) {
+    clearAiTimer(room);
+    broadcastViews(room);
+  } else if (!room.aiTimer) {
+    // 人机思考约 2 秒再行动，避免联机时瞬间连续出牌（与单机一致）
+    room.aiTimer = setTimeout(() => {
+      room.aiTimer = null;
+      const st = room.state;
+      if (!st || st.winner != null) return;
+      engine.act(st, ai.aiAct(st));
+      advance(room);
+    }, 2000 + Math.random() * 600);
+  }
 }
 
 function startRoom(room) {

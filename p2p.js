@@ -503,19 +503,29 @@
     hostAdvance();
   }
 
+  function clearHostAiTimer() {
+    if (host && host.aiTimer) { clearTimeout(host.aiTimer); host.aiTimer = null; }
+  }
+
   function hostAdvance() {
     const state = host.state;
     if (!state) return;
-    if (state.winner != null) { hostBroadcast(); return; }
+    if (state.winner != null) { clearHostAiTimer(); hostBroadcast(); return; }
     const d = state.decide;
     if (!d || d.kind === "gameover") return;
     const dc = host.engineToPeer[d.pid];
     if (d.pid === 0 || (dc && dc.readyState === "open")) {
+      clearHostAiTimer();
       hostBroadcast();
-    } else {
-      const action = window.SleepAI.aiAct(state);
-      engine.act(state, action);
-      hostAdvance();
+    } else if (!host.aiTimer) {
+      // 人机思考约 2 秒再行动，避免联机时瞬间连续出牌（与单机一致）
+      host.aiTimer = setTimeout(() => {
+        host.aiTimer = null;
+        const st = host.state;
+        if (!st || st.winner != null) return;
+        engine.act(st, window.SleepAI.aiAct(st));
+        hostAdvance();
+      }, 2000 + Math.random() * 600);
     }
   }
 
