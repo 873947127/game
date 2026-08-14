@@ -19,8 +19,18 @@
     if (typeof Audio === "undefined") return false; // Node 等非浏览器环境
     try {
       audio = new Audio(SRC);
-      audio.loop = true; // 循环播放
+      audio.loop = true; // 优先用原生循环
       audio.preload = "auto";
+      // 兜底：部分环境（浏览器/加载方式）下原生 loop 属性可能失效，
+      // 监听 ended 事件，播到末尾时强制从头重播，保证背景音乐持续循环
+      audio.addEventListener("ended", function () {
+        if (!playing) return;
+        try {
+          audio.currentTime = 0;
+          const p = audio.play();
+          if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+      });
     } catch (e) {
       return false;
     }
