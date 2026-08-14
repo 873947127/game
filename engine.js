@@ -172,6 +172,7 @@
       roundSkillIdx: 0,
       lastReveal: null, // 最近一次质疑翻牌的信息（供界面展示）
       challengePopup: null, // 质疑结算的完整结果（供界面弹窗）
+      passChallengePopup: null, // 下家未质疑（相信）的信息（供界面弹窗）
       eliminatePopup: null, // 玩家被淘汰的信息（供界面弹窗）
       _challengeCtx: null, // 质疑结算的中间数据
       winner: null,
@@ -228,6 +229,11 @@
   /** 记录一个音效事件（供界面播放，最多保留最近 8 条） */
   function sfxPush(state, name) {
     if (state.sfx.length < 8) state.sfx.push(name);
+  }
+  /** 技能发动效果提示（供界面弹 toast） */
+  function skillToast(state, owner, skillId, effectText) {
+    const sk = SKILLS[skillId];
+    sfxPush(state, { name: "skillEffect", text: owner + " 发动【" + sk.name + "】：" + effectText });
   }
 
   function computeEarly(cards, lightsOutTime) {
@@ -364,10 +370,6 @@
 
   function finalizeLightsOut(state) {
     let adj = state.lightsAdjust;
-    for (const p of alivePlayers(state)) {
-      adj += p.hotMilk;
-      p.hotMilk = 0;
-    }
     let t = state.lightsOutBase == null ? null : state.lightsOutBase + adj;
     if (t != null) t = Math.max(0, Math.min(5, t));
     state.lightsOutTime = t;
@@ -576,10 +578,16 @@
     if (cards.length !== cardIds.length) return; // 有牌不在手牌中，忽略
     for (const c of cards) p.hand = p.hand.filter((h) => h.id !== c.id);
     // 当前这组牌 + 累加到场地中央（一轮结束才清空）
+    // 热牛奶：只影响打出者自己的这次出牌（熄灯时间 +1），用完即清零
+    let personalT = state.lightsOutTime;
+    if (p.hotMilk > 0) {
+      personalT = personalT == null ? null : Math.min(5, personalT + p.hotMilk);
+      p.hotMilk = 0;
+    }
     state.currentPlay = {
       cards,
       ownerId: t.pid,
-      isEarly: computeEarly(cards, state.lightsOutTime),
+      isEarly: computeEarly(cards, personalT),
     };
     state.table.cards.push(...cards);
     p.playedCards.push(...cards);
@@ -597,6 +605,15 @@
     const challenger = playerById(state, state.decide.pid);
     const owner = playerById(state, state.turn.pid);
     state.log.push(challenger.name + " 选择不质疑，相信了 " + owner.name + "。");
+    // 下家未质疑：给打出者本人弹窗提示（界面只给 ownerId 对应玩家显示）
+    state.passChallengePopup = {
+      ownerId: owner.id,
+      ownerName: owner.name,
+      passerId: challenger.id,
+      passerName: challenger.name,
+      N: state.currentPlay.cards.length,
+      isEarly: state.currentPlay.isEarly,
+    };
     state.table.revealed = false;
     const played = state.currentPlay.cards;
     // 桃花源需要本回合扣置打出包含它的 3 张及以上才可触发
@@ -620,6 +637,8 @@
     const owner = playerById(state, state.turn.pid);
     const cards = state.currentPlay.cards;
     const N = cards.length;
+    // 出牌时已按该玩家的个人熄灯时间（含热牛奶）判定了早睡/熬夜，质疑沿用同一结果
+    const isEarly = state.currentPlay.isEarly;
     state.table.revealed = true;
     const labels = cards.map(cardLabel).join("，");
     state.pendingChallenger = challenger.id;
@@ -630,7 +649,7 @@
     owner.playedCards = owner.playedCards.filter((c) => !playIds.has(c.id));
     state.currentPlay = { cards: [], ownerId: null, isEarly: false };
 
-    if (computeEarly(cards, state.lightsOutTime)) {
+    if (isEarly) {
       // 早睡 → 质疑失败：质疑者拿起出牌 + 再摸等量
       sfxPush(state, "challengeFail");
       state.lastReveal = { cards, isEarly: true, ownerName: owner.name, challengerName: challenger.name };
@@ -708,6 +727,7 @@
     state.discard.push(card);
     state.pendingPenalty = Math.max(0, state.pendingPenalty - 2);
     state.log.push("😷 " + owner.name + " 亮出【蒸汽眼罩】，本次惩罚摸牌少摸2张。");
+    skillToast(state, owner.name, "yanzhao", "本次惩罚摸牌少摸2张");
     sfxPush(state, "skill");
     afterHandChanged(state);
     if (finishHandlers(state)) return;
@@ -733,21 +753,26 @@
       case "zhuadao":
         state.pendingPenalty += 2;
         state.log.push(playerById(state, state.turn.pid).name + " 被【抓到你熬夜了】，额外再摸2张牌。");
+        skillToast(state, challenger.name, "zhuadao", playerById(state, state.turn.pid).name + " 被额外罚摸2张牌");
         break;
       case "bujiao":
         state.decide = { kind: "giveCard", pid: challenger.id };
+        skillToast(state, challenger.name, "bujiao", "需交给对方 1 张手牌");
         return; // 需要选择交给对方的牌
       case "guanxing":
         challenger.pe.stargaze = true;
         state.log.push(challenger.name + " 下个摸牌阶段将发动【观星】。");
+        skillToast(state, challenger.name, "guanxing", "下个摸牌阶段改为「观星」");
         break;
       case "kafei":
         challenger.pe.skipDraw = true;
         state.log.push(challenger.name + " 下个回合将跳过摸牌阶段（咖啡）。");
+        skillToast(state, challenger.name, "kafei", "下个回合将跳过摸牌阶段");
         break;
       case "runiunai":
         challenger.hotMilk += 1;
         state.log.push(challenger.name + " 下个回合所在轮的熄灯时间将推迟1小时（热牛奶）。");
+        skillToast(state, challenger.name, "runiunai", "下回合所在轮的熄灯时间推迟1小时");
         break;
     }
     sfxPush(state, "skill");
@@ -770,6 +795,7 @@
     owner.lastGain = "被【该补觉了】塞牌";
     sfxPush(state, { name: "draw", count: 1 }); // 交给对方的1张牌也触发摸牌音效
     state.log.push("😴 " + challenger.name + " 用【该补觉了】交给了 " + owner.name + " 1张手牌。");
+    skillToast(state, challenger.name, "bujiao", "给了 " + owner.name + " 1 张手牌");
     afterHandChanged(state);
     if (finishHandlers(state)) return;
     startReactions(state, challenger);
@@ -801,9 +827,11 @@
     if (card.skill === "keshui") {
       nextp.pe.skipPlay = true;
       state.log.push("😴 " + owner.name + " 发动【瞌睡虫】！" + nextp.name + " 下回合将跳过出牌阶段。");
+      skillToast(state, owner.name, "keshui", nextp.name + " 下回合将跳过出牌阶段");
     } else if (card.skill === "xiongling") {
       nextp.pe.bell = true;
       state.log.push("🔔 " + owner.name + " 发动【午夜凶铃】！" + nextp.name + " 下回合将一直摸牌直到摸到晚12。");
+      skillToast(state, owner.name, "xiongling", nextp.name + " 下回合将一直摸牌直到摸到晚12");
     }
     sfxPush(state, "skill");
     if (state.failSkills.length) {
@@ -835,6 +863,7 @@
     if (skill === "huilongjue") {
       revealSkillCard(state, cardId);
       state.log.push("🌅 " + owner.name + " 亮出【回笼觉】，获得一个不含摸牌阶段的新回合！");
+      skillToast(state, owner.name, "huilongjue", "获得一个不含摸牌阶段的新回合");
       state.huilongjuePending = true;
       endTurn(state);
       return;
@@ -846,6 +875,7 @@
       owner.hand = nextp.hand;
       nextp.hand = tmp;
       state.log.push("🌸 " + owner.name + " 亮出【梦中桃花源】，与 " + nextp.name + " 交换了全部手牌！");
+      skillToast(state, owner.name, "taohuayuan", "与 " + nextp.name + " 交换了全部手牌");
       afterHandChanged(state);
       if (finishHandlers(state)) return;
     } else if (skill === "ruang") {
@@ -867,6 +897,7 @@
         }
       }
       state.log.push("🌌 " + owner.name + " 亮出【噩梦】，其他 " + count + " 名玩家各摸1张牌。");
+      skillToast(state, owner.name, "emeng", "其他 " + count + " 名玩家各摸1张牌");
       afterHandChanged(state);
       if (finishHandlers(state)) return;
     }
@@ -903,6 +934,7 @@
       target.hand.push(...d);
       target.lastGain = "被【清醒梦】塞牌";
       state.log.push("💤 " + owner.name + " 亮出【清醒梦】！" + target.name + " 摸3张牌。");
+      skillToast(state, owner.name, "qingxingmeng", target.name + " 摸3张牌");
       afterHandChanged(state);
       if (finishHandlers(state)) return;
     } else if (skill === "yuzhimeng") {
@@ -911,6 +943,7 @@
       const fresh = shown.filter((c) => !seenSet.has(c.id));
       owner.seenCards = owner.seenCards.concat(fresh);
       state.log.push("🔮 " + owner.name + " 亮出【预知梦】，查看了 " + target.name + " 的 " + shown.length + " 张手牌。");
+      skillToast(state, owner.name, "yuzhimeng", "查看了 " + target.name + " 的 " + shown.length + " 张手牌");
       state.decide = { kind: "preview", pid: owner.id, targetPid, cards: shown, cardId };
       return;
     }
@@ -931,6 +964,7 @@
     owner.hand = owner.hand.filter((c) => !cardIds.has(c.id));
     state.discard.push(ruang, extra);
     state.log.push("🍬 " + owner.name + " 发动【褪黑素软糖】，弃掉" + cardLabel(ruang) + " 和 " + cardLabel(extra) + "。");
+    skillToast(state, owner.name, "ruang", "弃掉 2 张手牌");
     afterHandChanged(state);
     if (finishHandlers(state)) return;
     continueEndSkills(state, { id: cardId, skill: "ruang" });

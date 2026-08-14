@@ -22,9 +22,38 @@
   let lastPromptText = null;
   let winAnnounced = false;    // 胜利音效只播一次
   let shownChallengePopup = null; // 已经展示过的质疑结果弹窗
+  let shownPassChallengePopup = null; // 已经展示过的“下家未质疑”弹窗
   let shownEliminatePopup = null; // 已经展示过的淘汰弹窗
   let lastHoverAt = 0;            // 悬停音效防抖时间戳
   let lastLightsOutRef = "none"; // 记录上次渲染的熄灯时间牌（用于翻牌动画）
+  let tutorialMode = false;
+  let tutorialStep = 0;
+  let tutorialAiBlocked = false;
+  let tutorialTimer = null;
+  let tutorialFinished = false; // 教程完成弹窗期间，阻止 pump 弹出“再来一局”结算
+  const TUTORIAL_KEY = "sleep-tutorial-seen";
+
+  function clearTutorialTimer() {
+    if (tutorialTimer) {
+      clearTimeout(tutorialTimer);
+      tutorialTimer = null;
+    }
+  }
+
+  function scheduleTutorialAi(step, fn, delayMs = 4000) {
+    clearTutorialTimer();
+    tutorialAiBlocked = true;
+    setPrompt("🤖 电脑正在思考…");
+    tutorialTimer = setTimeout(() => {
+      tutorialTimer = null;
+      if (!tutorialMode || tutorialStep !== step) {
+        tutorialAiBlocked = false;
+        return;
+      }
+      tutorialAiBlocked = false;
+      fn();
+    }, delayMs);
+  }
 
   /* ------------------------------ DOM ------------------------------ */
   const $ = (id) => document.getElementById(id);
@@ -40,6 +69,7 @@
   const playerBarEl = $("playerBar"), handEl = $("hand"), actionsEl = $("actions");
   const setupOverlay = $("setupOverlay"), rulesOverlay = $("rulesOverlay"), modalOverlay = $("modalOverlay");
   const modalTitle = $("modalTitle"), modalBody = $("modalBody"), modalActions = $("modalActions");
+  const rulesTitle = $("rulesTitle"), rulesBody = $("rulesBody");
 
   /* ------------------------------ 设置界面 ------------------------------ */
   let seatCount = 4;
@@ -86,6 +116,418 @@
       applyType(seat.isAI);
       list.appendChild(row);
     });
+  }
+
+  function showTutorialIntroModal() {
+    tutorialMode = false;
+    tutorialStep = 0;
+    tutorialAiBlocked = false;
+    tutorialFinished = false;
+    clearTutorialTimer();
+    config = null;
+    if (document.getElementById("newGameBtn")) document.getElementById("newGameBtn").textContent = "↻ 重新开局";
+    setupOverlay.classList.add("hidden");
+    rulesOverlay.classList.add("hidden");
+    modalTitle.textContent = "📘 新手教程";
+    modalBody.innerHTML = `
+      <div class="victory" style="font-size:1.05rem;line-height:1.9">
+        第一次游玩，建议先体验新手教程。<br>
+        <span style="font-size:0.85rem;color:var(--muted)">教程会带你完成 1V1 演示，学习熄灯时间、出牌、质疑和技能使用。</span>
+      </div>`;
+    modalActions.innerHTML = "";
+
+    const yesBtn = document.createElement("button");
+    yesBtn.className = "btn-primary";
+    yesBtn.textContent = "✅ 是，进入教程";
+    yesBtn.addEventListener("click", () => {
+      localStorage.setItem(TUTORIAL_KEY, "1");
+      modalOverlay.classList.add("hidden");
+      startTutorialGame();
+    });
+    modalActions.appendChild(yesBtn);
+
+    const noBtn = document.createElement("button");
+    noBtn.className = "btn-ghost";
+    noBtn.textContent = "否，直接开始";
+    noBtn.addEventListener("click", () => {
+      localStorage.setItem(TUTORIAL_KEY, "1");
+      modalOverlay.classList.add("hidden");
+      setupOverlay.classList.remove("hidden");
+      renderSetup();
+      showRulesPanel("rules");
+    });
+    modalActions.appendChild(noBtn);
+    modalOverlay.classList.remove("hidden");
+  }
+
+  function startTutorialGame() {
+    tutorialMode = true;
+    tutorialStep = 0;
+    tutorialAiBlocked = false;
+    clearTutorialTimer();
+    selected.clear();
+    clickMode = null;
+    targetMode = false;
+    document.getElementById("newGameBtn").textContent = "🚪 退出教程";
+    humanIds = [0];
+    const tutPlayers = [
+      { name: "你", isAI: false },
+      { name: "电脑", isAI: true },
+    ];
+    state = engine.newGame({ players: tutPlayers, seed: 20240613 });
+    state.round = 1;
+    state.players[0].hand = [
+      { id: "t-p0-9a", value: 0, skill: null },
+      { id: "t-p0-9b", value: 0, skill: null },
+      { id: "t-p0-10", value: 1, skill: null },
+      { id: "t-p0-11a", value: 2, skill: null },
+      { id: "t-p0-11b", value: 2, skill: null },
+    ];
+    state.players[1].hand = [
+      { id: "t-p1-10a", value: 1, skill: null },
+      { id: "t-p1-10b", value: 1, skill: null },
+      { id: "t-p1-1a", value: 4, skill: null },
+      { id: "t-p1-1b", value: 4, skill: null },
+      { id: "t-p1-2", value: 5, skill: null },
+    ];
+    state.players[0].playedCards = [];
+    state.players[1].playedCards = [];
+    state.currentPlay = { cards: [], ownerId: 0, isEarly: false };
+    state.table = { cards: [], ownerId: null, isEarly: false, revealed: false };
+    state.deck = [
+      { id: "t-d-1", value: 0, skill: null },
+      { id: "t-d-2", value: 2, skill: null },
+      { id: "t-d-3", value: 3, skill: null },
+      { id: "t-d-4", value: 3, skill: null },
+      { id: "t-d-5", value: 5, skill: "yanchi" },
+      { id: "t-d-6", value: 1, skill: null },
+    ];
+    state.discard = [];
+    state.turn = { pid: 0, phase: "play" };
+    state.decide = { kind: "revealLightsOut", pid: 0 };
+    state.lightsOutCard = null;
+    state.lightsOutTime = null;
+    state.log = ["新手教程：1V1 演示开始。"];
+    modalOverlay.classList.add("hidden");
+    showTutorialMessage("📘 新手教程", "夜深了，我们来看看今天几点熄灯吧。<br>点击屏幕上的熄灯时间牌翻开。", "继续");
+    render();
+  }
+
+  function showTutorialMessage(title, message, btnText, next) {
+    modalTitle.textContent = title;
+    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${message}</div>`;
+    modalActions.innerHTML = "";
+    const btn = document.createElement("button");
+    btn.className = "btn-primary";
+    btn.textContent = btnText || "继续";
+    btn.addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+      selected.clear();
+      clickMode = null;
+      targetMode = false;
+      if (typeof next === "function") next();
+      if (tutorialMode && state) {
+        if (state.decide && humanIds.includes(state.decide.pid)) {
+          render();
+          renderHumanControls(state.decide);
+        } else if (state) {
+          render();
+        }
+        pump();
+      } else if (state) {
+        render();
+      }
+    });
+    modalActions.appendChild(btn);
+    modalOverlay.classList.remove("hidden");
+  }
+
+  function handleTutorialAction(action) {
+    if (!tutorialMode || !state) return;
+
+    const player = state.players[0];
+
+    if (tutorialStep === 0 && action.type === "revealLightsOut") {
+      state.lightsOutCard = { id: "t-light-10", value: 1, skill: null };
+      state.lightsOutTime = 1;
+      state.turn = { pid: 0, phase: "play" };
+      state.decide = { kind: "play", pid: 0 };
+      tutorialStep = 1;
+      showTutorialMessage(
+        "🌙 熄灯时间",
+        "今晚的熄灯时间是<strong>晚上10点</strong>。<br>十点有些太早了，我们今天试试熬夜吧。<br>请打出两张11点。",
+        "继续",
+        () => setPrompt("🎴 请选择两张 11 点牌，然后点击确认出牌。")
+      );
+      return;
+    }
+
+    if (tutorialStep === 1 && action.type === "playCards") {
+      const ids = action.cardIds || [];
+      const chosen = ids.map((id) => player.hand.find((c) => c.id === id)).filter(Boolean);
+      const values = chosen.map((c) => c.value);
+      if (ids.length === 2 && values.every((v) => v === 2)) {
+        player.hand = player.hand.filter((c) => !ids.includes(c.id));
+        state.currentPlay = { cards: chosen, ownerId: 0, isEarly: false };
+        state.table.cards = chosen.slice();
+        state.turn = { pid: 0, phase: "challenge" };
+        state.decide = { kind: "challenge", pid: 1, ownerPid: 0, N: 2 };
+        tutorialStep = 2;
+        scheduleTutorialAi(2, () => {
+          engine.act(state, { type: "passChallenge" });
+          showTutorialMessage(
+            "😌 电脑选择不质疑",
+            "太好了！我们熬夜没有被抓到。",
+            "继续",
+            () => {
+              state.players[1].hand = [
+                { id: "t-p1-10a", value: 1, skill: null },
+                { id: "t-p1-10b", value: 1, skill: null },
+                { id: "t-p1-1a", value: 4, skill: null },
+                { id: "t-p1-1b", value: 4, skill: null },
+                { id: "t-p1-2", value: 5, skill: null },
+              ];
+              state.currentPlay = { cards: [], ownerId: null, isEarly: false };
+              state.turn = { pid: 1, phase: "play" };
+              state.decide = { kind: "play", pid: 1 };
+              tutorialStep = 3;
+              scheduleTutorialAi(3, () => {
+                state.currentPlay = { cards: [
+                  { id: "t-p1-1a", value: 4, skill: null },
+                  { id: "t-p1-1b", value: 4, skill: null },
+                  { id: "t-p1-2", value: 5, skill: null },
+                ], ownerId: 1, isEarly: false };
+                state.table.cards = state.currentPlay.cards.slice();
+                state.decide = { kind: "challenge", pid: 0, ownerPid: 1, N: 3 };
+                state.turn = { pid: 1, phase: "challenge" };
+                showTutorialMessage(
+                  "🔍 质疑时机",
+                  "他打出了三张牌，很大概率也在熬夜。<br>我们来质疑他！<br>点击“质疑他！”即可进行质疑。",
+                  "继续",
+                  () => {
+                    setPrompt("🔍 请选择“质疑他！”来挑战电脑的这组牌。");
+                    renderHumanControls(state.decide);
+                  }
+                );
+              }, 4000);
+            }
+          );
+        }, 4000);
+        return;
+      }
+      setPrompt("⚠️ 这一步请按提示打出两张 11 点牌，再点击确认。 ");
+      return;
+    }
+
+    if (tutorialStep === 3 && action.type === "challenge") {
+      state.lastReveal = {
+        isEarly: false,
+        ownerName: "电脑",
+        challengerName: "你",
+        cards: [
+          { id: "t-p1-1a", value: 4, skill: null },
+          { id: "t-p1-1b", value: 4, skill: null },
+          { id: "t-p1-2", value: 5, skill: null },
+        ],
+      };
+      state.players[1].hand = [
+        { id: "t-p1-9a", value: 0, skill: null },
+        { id: "t-p1-9b", value: 0, skill: null },
+        { id: "t-p1-9c", value: 0, skill: null },
+        { id: "t-p1-10a", value: 1, skill: null },
+        { id: "t-p1-10b", value: 1, skill: null },
+      ];
+      state.players[0].hand = [
+        { id: "t-p0-9a", value: 0, skill: null },
+        { id: "t-p0-9b", value: 0, skill: null },
+        { id: "t-p0-10", value: 1, skill: null },
+      ];
+      tutorialStep = 4;
+      showTutorialMessage(
+        "✅ 质疑成功",
+        "质疑成功！他要拿回自己打出的3张牌，并再摸3张牌。",
+        "继续",
+        () => {
+          state.round = 2;
+          state.lightsOutCard = null; // 电脑思考后再翻开
+          state.lightsOutTime = null;
+          state.turn = { pid: 0, phase: "play" };
+          state.decide = { kind: "revealLightsOut", pid: 1 }; // 电脑翻熄灯时间
+          state.players[0].hand = [
+            { id: "t-p0-9a", value: 0, skill: null },
+            { id: "t-p0-9b", value: 0, skill: null },
+            { id: "t-p0-10", value: 1, skill: null },
+          ];
+          // 电脑思考 2 秒后翻开熄灯时间
+          scheduleTutorialAi(4, () => {
+            state.lightsOutCard = { id: "t-light-9", value: 0, skill: null };
+            state.lightsOutTime = 0;
+            tutorialAiBlocked = true; // 等待期间不响应 AI / 玩家操作
+            render(); // 翻牌动画
+            setPrompt("🤖 电脑翻出了熄灯时间…");
+            // 翻开后等 1 秒再弹窗说明
+            clearTutorialTimer();
+            tutorialTimer = setTimeout(() => {
+              tutorialTimer = null;
+              showTutorialMessage(
+                "🌙 第二轮",
+                "这轮由他翻开熄灯时间，他翻开的时间是<strong>晚上9点</strong>。",
+                "继续",
+                () => {
+                  // 玩家的回合开始：摸到【延迟熄灯】（摸牌动画由弹窗关闭后的 render 触发）
+                  state.players[0].hand.push({ id: "t-p0-2", value: 5, skill: "yanchi" });
+                  // 摸到后等 1 秒再提示技能牌
+                  clearTutorialTimer();
+                  tutorialTimer = setTimeout(() => {
+                    tutorialTimer = null;
+                    showTutorialMessage(
+                      "✨ 摸到技能牌",
+                      "哇！我们抽到了一张技能牌【延迟熄灯】。<br>它可以在轮次开始时改变熄灯时间。<br>我们可以在之后打出",
+                      "继续",
+                      () => {
+                        showTutorialMessage(
+                          "💡 小提示",
+                          "这一轮的熄灯时间是<strong>晚上9点</strong>，我建议我们选择早睡。",
+                          "继续",
+                          () => {
+                            state.decide = { kind: "play", pid: 0 };
+                            state.turn = { pid: 0, phase: "play" };
+                            tutorialAiBlocked = false;
+                          }
+                        );
+                      }
+                    );
+                  }, 1000);
+                }
+              );
+            }, 1000);
+          }, 2000);
+        }
+      );
+      return;
+    }
+
+    if (tutorialStep === 4 && action.type === "playCards") {
+      const ids = action.cardIds || [];
+      const chosen = ids.map((id) => player.hand.find((c) => c.id === id)).filter(Boolean);
+      const values = chosen.map((c) => c.value);
+      if (ids.length === 2 && values.every((v) => v === 0)) {
+        player.hand = player.hand.filter((c) => !ids.includes(c.id));
+        state.currentPlay = { cards: chosen, ownerId: 0, isEarly: true };
+        state.table.cards = chosen.slice();
+        state.decide = { kind: "challenge", pid: 1, ownerPid: 0, N: 2 };
+        state.turn = { pid: 0, phase: "challenge" };
+        tutorialStep = 5;
+        scheduleTutorialAi(5, () => {
+          state.round = 3;
+          state.lightsOutCard = null;
+          state.lightsOutBase = null;
+          state.lightsOutTime = null;
+          state.turn = { pid: 0, phase: "draw" };
+          state.decide = { kind: "revealLightsOut", pid: 0 };
+          state.players[0].hand = [
+            { id: "t-p0-2", value: 5, skill: "yanchi" },
+            { id: "t-p0-10", value: 1, skill: null },
+          ];
+          showTutorialMessage(
+            "⚠️ 电脑质疑",
+            "他选择质疑，质疑失败。<br>他要拿起我们打出的2张牌，并再摸2张牌。<br>他以为我们熬夜了呢，没想到我们乖乖睡觉啦！",
+            "继续",
+            () => {
+              showTutorialMessage(
+                "🎯 第三轮",
+                "轮到我们看熄灯时间了。<br>点击屏幕上的熄灯时间牌翻开。"
+              );
+            }
+          );
+        }, 4000);
+        return;
+      }
+      setPrompt("⚠️ 这里要打出两张 9 点牌，形成早睡。 ");
+      return;
+    }
+
+    if (tutorialStep === 5 && action.type === "revealLightsOut") {
+      state.lightsOutCard = { id: "t-light-9b", value: 0, skill: null };
+      state.lightsOutBase = 0;
+      state.lightsOutTime = null;
+      tutorialAiBlocked = true; // 等待期间不响应操作
+      // 让玩家看清翻开的熄灯时间，等 2 秒再弹窗说明
+      clearTutorialTimer();
+      tutorialTimer = setTimeout(() => {
+        tutorialTimer = null;
+        showTutorialMessage(
+          "🎯 第三轮",
+          "今晚9点熄灯，但我们手里没有9点，只能冒险熬夜。<br>不过我们有刚刚抽到的技能卡【延迟熄灯】<br>现在正是派上用场的时候了！",
+          "继续",
+          () => {
+            state.decide = { kind: "roundStartSkill", pid: 0 };
+            tutorialStep = 6;
+            tutorialAiBlocked = false;
+            renderHumanControls(state.decide);
+          }
+        );
+      }, 2000);
+      return;
+    }
+
+    if (tutorialStep === 6 && action.type === "playRoundStart") {
+      const cardId = action.cardId;
+      if (cardId) {
+        state.players[0].hand = state.players[0].hand.filter((c) => c.id !== cardId);
+      }
+      state.lightsOutTime = 1;
+      state.turn = { pid: 0, phase: "draw" };
+      state.decide = { kind: "play", pid: 0 };
+      tutorialStep = 7;
+      showTutorialMessage(
+        "✨ 技能生效",
+        "太好了，现在熄灯时间变成了晚上10点。<br>我们已经胜券在握。",
+        "继续",
+        () => {
+          state.players[0].hand = [
+            { id: "t-p0-10", value: 1, skill: null },
+            { id: "t-p0-10b", value: 1, skill: null },
+          ];
+          state.decide = { kind: "play", pid: 0 };
+          renderHumanControls(state.decide);
+        }
+      );
+      return;
+    }
+
+    if (tutorialStep === 7 && action.type === "playCards") {
+      const ids = action.cardIds || [];
+      const chosen = ids.map((id) => player.hand.find((c) => c.id === id)).filter(Boolean);
+      const values = chosen.map((c) => c.value);
+      if (ids.length === 2 && values.every((v) => v === 1)) {
+        tutorialMode = false;
+        tutorialStep = 0;
+        state.winner = 0;
+        tutorialFinished = true; // 阻止 pump 弹出“再来一局”结算
+        if (window.SFX) window.SFX.play("win");
+        showTutorialMessage(
+          "🏆 教程完成",
+          "恭喜您完成教程，接下来体验一下正式对局吧！",
+          "开始对局",
+          () => {
+            tutorialFinished = false;
+            stopAI();
+            document.getElementById("newGameBtn").textContent = "↻ 重新开局";
+            state = null;
+            config = null;
+            setupOverlay.classList.remove("hidden");
+            renderSetup();
+            showRulesPanel("rules");
+          }
+        );
+      }
+      return;
+    }
+
+    if (tutorialMode) {
+      setPrompt("📘 新手教程：请按引导内容完成当前步骤。 ");
+    }
   }
 
   $("minusBtn").addEventListener("click", () => {
@@ -149,22 +591,126 @@
   }
 
   $("newGameBtn").addEventListener("click", () => {
+    if (tutorialMode) {
+      showExitTutorialConfirm();
+      return;
+    }
+    if (state && state.winner == null) {
+      showRestartConfirm();
+      return;
+    }
     stopAI();
     setupOverlay.classList.remove("hidden");
     renderSetup();
   });
 
+  function showExitTutorialConfirm() {
+    modalTitle.textContent = "🚪 确认退出教程";
+    modalBody.innerHTML = `
+      <div class="victory" style="font-size:1.05rem;line-height:1.9">
+        你确定要退出新手教程吗？<br>
+        <span style="font-size:0.85rem;color:var(--muted)">退出后，当前教程进度会丢失，并返回到开始界面。</span>
+      </div>`;
+    modalActions.innerHTML = "";
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "btn-primary";
+    confirmBtn.textContent = "确认退出";
+    confirmBtn.addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+      exitTutorialToSetup();
+    });
+    modalActions.appendChild(confirmBtn);
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn-ghost";
+    cancelBtn.textContent = "取消";
+    cancelBtn.addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+    });
+    modalActions.appendChild(cancelBtn);
+
+    modalOverlay.classList.remove("hidden");
+  }
+
+  function exitTutorialToSetup() {
+    stopAI();
+    clearTutorialTimer();
+    tutorialMode = false;
+    tutorialStep = 0;
+    tutorialAiBlocked = false;
+    state = null;
+    config = null;
+    selected.clear();
+    clickMode = null;
+    targetMode = false;
+    humanIds = [];
+    document.getElementById("newGameBtn").textContent = "↻ 重新开局";
+    setupOverlay.classList.remove("hidden");
+    renderSetup();
+  }
+
+  function showRestartConfirm() {
+    modalTitle.textContent = "🔄 确认重开";
+    modalBody.innerHTML = `
+      <div class="victory" style="font-size:1.05rem;line-height:1.9">
+        当前游戏还在进行中，是否确认提前结束并重开？<br>
+        <span style="font-size:0.85rem;color:var(--muted)">确认后，会先结束当前局，再返回开局界面。</span>
+      </div>`;
+    modalActions.innerHTML = "";
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "btn-primary";
+    confirmBtn.textContent = "确认重开";
+    confirmBtn.addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+      endCurrentGameAndRestart();
+    });
+    modalActions.appendChild(confirmBtn);
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn-ghost";
+    cancelBtn.textContent = "取消";
+    cancelBtn.addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+    });
+    modalActions.appendChild(cancelBtn);
+
+    modalOverlay.classList.remove("hidden");
+  }
+
+  function endCurrentGameAndRestart() {
+    stopAI();
+    if (tutorialMode) {
+      exitTutorialToSetup();
+      return;
+    }
+    if (!state) {
+      setupOverlay.classList.remove("hidden");
+      renderSetup();
+      return;
+    }
+    const winner = state.players.find((p) => p.alive) || state.players[0];
+    state.winner = winner ? winner.id : 0;
+    showGameOver();
+  }
+
   /* ------------------------------ 单机/联机 模式切换 ------------------------------ */
   function switchMode(online) {
     $("singleArea").classList.toggle("hidden", online);
     $("onlineArea").classList.toggle("hidden", !online);
-    $("modeSingleBtn").classList.toggle("on-human", !online);
-    $("modeOnlineBtn").classList.toggle("on-human", online);
+    // 元素不存在时跳过（防止 HTML/JS 缓存版本不一致时报错，导致按钮点了没反应）
+    if ($("modeSingleBtn")) $("modeSingleBtn").classList.toggle("on-human", !online);
+    if ($("modeOnlineBtn")) $("modeOnlineBtn").classList.toggle("on-human", online);
+    if ($("modeTutorialBtn")) $("modeTutorialBtn").classList.remove("on-human"); // 教程是弹窗入口，不参与模式高亮
   }
+  $("modeTutorialBtn").addEventListener("click", () => {
+    showTutorialIntroModal();
+  });
   $("modeSingleBtn").addEventListener("click", () => switchMode(false));
   $("modeOnlineBtn").addEventListener("click", () => switchMode(true));
 
-  // 去联机对战（服务器版页面）
+  // 去服务器版（需部署，最稳定）
   $("toNetBtn").addEventListener("click", () => {
     if (window.location.protocol === "file:") {
       alert("服务器版需要先部署服务器（详见《部署说明.txt》），然后在服务器网址上打开。");
@@ -179,7 +725,10 @@
   });
 
   $("rulesBtn").addEventListener("click", () => {
-    $("rulesOverlay").classList.remove("hidden");
+    showRulesPanel("rules");
+  });
+  $("skillBtn").addEventListener("click", () => {
+    showRulesPanel("skills");
   });
   $("closeRulesBtn").addEventListener("click", () => {
     $("rulesOverlay").classList.add("hidden");
@@ -199,6 +748,15 @@
   /* ------------------------------ 开局 ------------------------------ */
   function startGame(cfg) {
     stopAI();
+    clearTutorialTimer();
+    if (!cfg || !Array.isArray(cfg)) {
+      tutorialMode = false;
+      tutorialStep = 0;
+      state = null;
+      setupOverlay.classList.remove("hidden");
+      renderSetup();
+      return;
+    }
     state = engine.newGame({ players: cfg });
     humanIds = cfg.map((p, i) => (p.isAI ? null : i)).filter((i) => i != null);
     selected.clear();
@@ -212,6 +770,7 @@
     lastPromptText = null;
     winAnnounced = false;
     shownChallengePopup = null;
+    shownPassChallengePopup = null;
     shownEliminatePopup = null;
     lastLightsOutRef = "none";
     pump();
@@ -225,7 +784,47 @@
   function pump() {
     stopAI();
     if (!state) return;
+    if (tutorialMode) {
+      render();
+      const d = state.decide;
+      if (!d) return;
+      if (tutorialAiBlocked) {
+        setPrompt("🤖 电脑正在思考…");
+        return;
+      }
+      const player = state.players[d.pid];
+      if (humanIds.includes(d.pid)) {
+        renderHumanControls(d);
+        return;
+      }
+      if (player && player.isAI) {
+        if (tutorialAiBlocked) return;
+        const fast = window.__aiDelay != null;
+        let delay;
+        if (fast) {
+          delay = window.__aiDelay;
+        } else {
+          // 教程中电脑思考 4 秒，正式游戏保持 2 秒。
+          delay = 4000 + Math.random() * 800;
+        }
+        setPrompt("🤖 电脑正在思考…");
+        aiTimer = setTimeout(() => {
+          const action = ai.aiAct(state);
+          engine.act(state, action);
+          selected.clear();
+          clickMode = null;
+          targetMode = false;
+          pump();
+        }, delay);
+      }
+      return;
+    }
     if (state.winner != null) {
+      if (tutorialFinished) {
+        // 教程完成弹窗期间不弹“再来一局”结算
+        render();
+        return;
+      }
       if (!winAnnounced) {
         winAnnounced = true;
         if (window.SFX) window.SFX.play("win");
@@ -236,13 +835,24 @@
     }
     const d = state.decide;
     render();
+    // 观星/预知梦等需要弹专用面板的决策进行中时，不弹通知弹窗，避免互相覆盖导致卡死
+    const modalDecide = d && (d.kind === "stargaze" || d.kind === "preview");
     // 质疑结果弹窗：玩家参与时弹出（需点“知道了”继续）；电脑互搏不弹（看场上翻牌即可）
     const cp = state.challengePopup;
-    if (cp && cp !== shownChallengePopup) {
+    if (cp && cp !== shownChallengePopup && !modalDecide) {
       shownChallengePopup = cp;
       const humanInvolved = humanIds.includes(cp.challengerId) || humanIds.includes(cp.ownerId);
       if (humanInvolved) {
         showChallengePopup(cp);
+        return; // 暂停，等玩家确认
+      }
+    }
+    // 下家未质疑弹窗：只给“打出牌的人”显示提示（需点“知道了”继续）
+    const ppc = state.passChallengePopup;
+    if (ppc && ppc !== shownPassChallengePopup && !modalDecide) {
+      shownPassChallengePopup = ppc;
+      if (humanIds.includes(ppc.ownerId)) {
+        showPassChallengePopup(ppc);
         return; // 暂停，等玩家确认
       }
     }
@@ -262,8 +872,8 @@
       if (fast) {
         delay = window.__aiDelay;
       } else {
-        // 刚切换回合/轮次时多停顿一下，让过渡横幅能被看清
-        delay = turnJustChanged ? 1000 + Math.random() * 500 : 620 + Math.random() * 480;
+        // 正式游戏中电脑思考约 2 秒，教程中继续保留 4 秒。
+        delay = tutorialMode ? 4000 + Math.random() * 800 : 2000 + Math.random() * 600;
       }
       turnJustChanged = false;
       aiTimer = setTimeout(() => {
@@ -281,6 +891,15 @@
 
   function applyAction(action) {
     stopAI();
+    if (tutorialMode) {
+      clearTutorialTimer();
+      handleTutorialAction(action);
+      selected.clear();
+      clickMode = null;
+      targetMode = false;
+      pump();
+      return;
+    }
     engine.act(state, action);
     selected.clear();
     clickMode = null;
@@ -309,6 +928,10 @@
     for (const ev of list) {
       if (ev && typeof ev === "object" && ev.name === "roundStartEffect") {
         showToast(ev.text); // 轮次开始技能的效果提示
+        continue;
+      }
+      if (ev && typeof ev === "object" && ev.name === "skillEffect") {
+        showToast(ev.text); // 玩家发动技能的效果提示
         continue;
       }
       if (ev && typeof ev === "object" && ev.name === "draw" && ev.count > 0) {
@@ -655,12 +1278,25 @@
           ? `🌙 轮到你翻开今晚的熄灯时间了！点击中间那张牌。`
           : `🌙 ${p.name} 正在翻开今晚的熄灯时间…`;
       }
-      case "roundStartSkill":
-        return `🌙 轮次准备阶段：可以打出「提前熄灯 / 延迟熄灯 / 宵禁命令 / 狂欢派对」（可多张），然后才开始正式出牌。`;
+      case "roundStartSkill": {
+        if (tutorialMode && tutorialStep === 6 && p.id === 0) {
+          return "🧠 请使用【延迟熄灯】把熄灯时间变成晚上10点。";
+        }
+        return "🌙 轮次准备阶段：等待玩家选择发动技能。";
+      }
       case "stargaze": return "";
       case "play": {
+        if (tutorialMode && tutorialStep === 1 && p.id === 0) {
+          return "🎴 请打出 2 张晚上11点吧。";
+        }
+        if (tutorialMode && tutorialStep === 4 && p.id === 0) {
+          return "🎴 请打出 2 张晚上9点吧。";
+        }
+        if (tutorialMode && tutorialStep === 7 && p.id === 0) {
+          return "🎴 打出所有手牌吧。";
+        }
         const t = state.lightsOutTime == null ? "（无）" : engine.TIME_NAMES[state.lightsOutTime];
-        return `🎴 ${p.name} 出牌阶段：选择要扣着打出的牌（至少1张）。本轮熄灯时间：${t}`;
+        return `🎴 ${p.name} 出牌阶段：选择要扣置的牌（至少1张）。本轮熄灯时间：${t}`;
       }
       case "challenge": {
         const owner = state.players[d.ownerPid];
@@ -961,14 +1597,33 @@
     modalOverlay.classList.remove("hidden");
   }
 
+  /** 下家未质疑弹窗：提示打出者“没被质疑” */
+  function showPassChallengePopup(ppc) {
+    const text = ppc.isEarly
+      ? "😌 " + ppc.passerName + " 没有质疑你，相信了你打出的 " + ppc.N + " 张牌！"
+      : "😈 " + ppc.passerName + " 没有质疑你！你成功隐瞒了 " + ppc.N + " 张牌。";
+    modalTitle.textContent = "🙈 未被质疑";
+    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
+    modalActions.innerHTML = "";
+    const ok = document.createElement("button");
+    ok.className = "btn-primary";
+    ok.textContent = "知道了";
+    ok.addEventListener("click", () => {
+      modalOverlay.classList.add("hidden");
+      pump();
+    });
+    modalActions.appendChild(ok);
+    modalOverlay.classList.remove("hidden");
+  }
+
   function showGameOver() {
-    const w = state.players[state.winner];
+    const w = state && state.players && state.players[state.winner] ? state.players[state.winner] : null;
     modalTitle.textContent = "🏆 游戏结束";
     modalBody.innerHTML = `
       <div class="victory">
         <span class="big-emoji">🎉</span>
-        ${w.name} 第一个睡着了，赢得胜利！<br>
-        <span style="font-size:0.85rem;color:var(--muted)">用了 ${state.round} 轮</span>
+        ${w ? w.name : "本局"} 第一个睡着了，赢得胜利！<br>
+        <span style="font-size:0.85rem;color:var(--muted)">用了 ${state ? state.round : 0} 轮</span>
       </div>`;
     modalActions.innerHTML = "";
     const again = document.createElement("button");
@@ -976,6 +1631,20 @@
     again.textContent = "再来一局";
     again.addEventListener("click", () => {
       modalOverlay.classList.add("hidden");
+      if (tutorialMode) {
+        tutorialMode = false;
+        tutorialStep = 0;
+        state = null;
+        config = null;
+        setupOverlay.classList.remove("hidden");
+        renderSetup();
+        return;
+      }
+      if (!config) {
+        setupOverlay.classList.remove("hidden");
+        renderSetup();
+        return;
+      }
       startGame(config);
     });
     modalActions.appendChild(again);
@@ -992,8 +1661,7 @@
   }
 
   /* ------------------------------ 规则弹窗内容 ------------------------------ */
-  function buildRulesBody() {
-    // 技能卡按时间点分组，使用完整原句
+  function buildSkillListBody() {
     const byValue = {};
     for (const sk of Object.values(engine.SKILLS)) {
       (byValue[sk.value] = byValue[sk.value] || []).push(sk);
@@ -1005,13 +1673,20 @@
         list.map((sk) => `<li><b>${sk.name}</b>：${attr(sk.desc)}</li>`).join("") +
         `</ul>`;
     }
-    $("rulesOverlay").querySelector(".rules-body").innerHTML = `
+    return `
+      <h3>🧠 技能一览</h3>
+      ${skillsHtml}
+    `;
+  }
+
+  function buildRulesBody() {
+    return `
     <h3>🌙 游戏背景</h3>
-    <p>「今天几点睡」是一款以传统唬牌游戏规则为基础、融入了夜间元素和技能设定的卡牌游戏。游戏情境设定在夜晚，每位玩家都要为今晚的入睡时间斗智斗勇——是乖乖早睡，还是偷偷熬夜？一边要伪装自己，一边还要抓出那些谎称早睡、其实在熬夜的家伙。全程充满心理博弈，让你切身体会熬夜时那种既紧张又刺激的感觉。</p>
+    <p>「今天几点睡」是一款以多人卡牌游戏。情境设定在夜晚，每位玩家都要为今晚的入睡时间斗智斗勇——是乖乖早睡，还是偷偷熬夜？一边要伪装自己，一边还要抓出那些谎称早睡、其实在熬夜的家伙。全程充满心理博弈，让你切身体会熬夜时那种既紧张又刺激的感觉。</p>
     <h3>🎯 目标</h3>
     <ul>
-      <li>最先清空手牌（0张）的玩家获胜。</li>
-      <li>手牌达到 21 张以上 → 直接淘汰。</li>
+      <li>最先清空手牌的玩家获胜。</li>
+      <li>手牌达到 21 张及以上会直接淘汰。</li>
     </ul>
     <h3>🂠 卡牌</h3>
     <ul>
@@ -1022,28 +1697,32 @@
     <ul>
       <li>首位玩家翻开牌堆顶1张作为【熄灯时间】（每轮轮换先手）。</li>
       <li>然后按顺序每人一个回合：开始→摸牌→出牌→质疑→结束。</li>
-      <li>最后一名玩家回合结束后，场上牌进弃牌堆，开始新一轮。</li>
+      <li>最后一名玩家回合结束后，场上的牌放入弃牌堆，开始新一轮。</li>
     </ul>
     <h3>😴 早睡 / 熬夜</h3>
     <ul>
       <li>扣着打出的牌<b>全是同一种时间</b>且<b>不晚于熄灯时间</b> → 早睡。</li>
-      <li>打出的牌<b>≥2种时间</b>或有牌<b>晚于熄灯时间</b> → 熬夜（唬人！）。</li>
-      <li>下家可质疑：若是早睡则质疑失败（质疑者收牌+摸等量），若是熬夜则质疑成功（出牌者收牌+摸等量）。</li>
+      <li>打出的牌<b>≥2种时间</b>或有牌<b>晚于熄灯时间</b> → 熬夜。</li>
+      <li>下家可质疑：若是早睡则质疑失败（质疑者收牌+摸等量的牌），若是熬夜则质疑成功（出牌者收牌+摸等量的牌）。</li>
     </ul>
-    <h3>✨ 全部技能（把鼠标悬停到手牌或场上的技能牌上也能看介绍）</h3>
-    ${skillsHtml}
-    <h3>💡 提示</h3>
-    <ul>
-      <li>“未被质疑”的技能在结束阶段亮出发动；“质疑成功/失败”的技能在翻牌时发动。</li>
-      <li>抽牌堆不够时，弃牌堆自动洗回。</li>
-    </ul>`;
+    `;
+  }
+
+  function showRulesPanel(kind) {
+    if (kind === "skills") {
+      rulesTitle.textContent = "🧠 技能一览";
+      rulesBody.innerHTML = buildSkillListBody();
+    } else {
+      rulesTitle.textContent = "📜 玩法速览";
+      rulesBody.innerHTML = buildRulesBody();
+    }
+    rulesOverlay.classList.remove("hidden");
   }
 
   /* ------------------------------ 启动 ------------------------------ */
-  buildRulesBody();
-  // 刚进入游戏，先展示规则介绍，看完再点“我知道了”进入设置
-  $("rulesOverlay").classList.remove("hidden");
+  // 打开游戏先询问是否进行新手教程（选“是”进教程；选“否”则显示规则提示）
   renderSetup();
+  showTutorialIntroModal();
 
   // 测试/调试钩子（对游戏无影响）
   window.__sleepGame = { state: () => state, applyAction };

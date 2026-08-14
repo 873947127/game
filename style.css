@@ -21,6 +21,10 @@
 
 * { box-sizing: border-box; }
 
+/* 通用隐藏工具类：JS 大量用 .hidden 切换显示（如 onlineArea、大厅/主机/客户端区域）。
+   此前缺少此规则导致这些元素永远可见、切换按钮“点了没反应”。 */
+.hidden { display: none !important; }
+
 html, body {
   margin: 0;
   min-height: 100%;

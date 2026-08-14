@@ -336,9 +336,57 @@
     if (!window.SFX || !v.sfx) return;
     for (const ev of v.sfx) {
       if (ev && typeof ev === "object" && ev.name === "roundStartEffect") showToast(ev.text);
+      else if (ev && typeof ev === "object" && ev.name === "skillEffect") showToast(ev.text);
       else if (ev && typeof ev === "object" && ev.name === "draw" && ev.count > 0) { for (let i = 0; i < ev.count; i++) setTimeout(() => window.SFX.play("draw"), i * 180); }
       else window.SFX.play(ev);
     }
+  }
+  // 质疑结果弹窗：记录已展示过的引用，避免同一结果重复弹
+  let lastShownChallenge = null;
+  function showChallengePopup(cp) {
+    const me = myId();
+    const X = cp.drawCount;
+    // 只弹“与你有关”的质疑：你质疑别人，或别人质疑你。其他玩家互质疑/电脑互质疑不弹窗。
+    const involvesMe = cp.challengerId === me || cp.ownerId === me;
+    if (!involvesMe) return;
+    let text;
+    if (cp.challengerId === me) {
+      text = cp.isEarly
+        ? "😅 你的质疑失败了！你要拿回对方的所有牌，并再摸 " + X + " 张牌！"
+        : "🎉 你的质疑成功了！对方要拿回所有牌，并再摸 " + X + " 张牌！";
+    } else {
+      text = cp.isEarly
+        ? "✅ " + cp.challengerName + " 质疑了你！但他的质疑失败了，他要拿回你的所有牌，并再摸 " + X + " 张牌！"
+        : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了，你要拿回所有牌，并再摸 " + X + " 张牌！";
+    }
+    modalTitle.textContent = "🔍 质疑结果";
+    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
+    modalActions.innerHTML = "";
+    const ok = document.createElement("button");
+    ok.className = "btn-primary";
+    ok.textContent = "知道了";
+    ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
+    modalActions.appendChild(ok);
+    modalOverlay.classList.remove("hidden");
+  }
+  // 下家未质疑弹窗：只给“打出牌的人”显示提示
+  let lastShownPass = null;
+  function showPassChallengePopup(pc) {
+    const me = myId();
+    // 只给被打出者本人弹窗，其他人不弹
+    if (pc.ownerId !== me) return;
+    const text = pc.isEarly
+      ? "😌 " + pc.passerName + " 没有质疑你，相信了你打出的 " + pc.N + " 张牌！"
+      : "😈 " + pc.passerName + " 没有质疑你！你成功隐瞒了 " + pc.N + " 张牌（其实是熬夜）。";
+    modalTitle.textContent = "🙈 未被质疑";
+    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
+    modalActions.innerHTML = "";
+    const ok = document.createElement("button");
+    ok.className = "btn-primary";
+    ok.textContent = "知道了";
+    ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
+    modalActions.appendChild(ok);
+    modalOverlay.classList.remove("hidden");
   }
 
   /* ================== 视图构建（主机用，信息隔离） ================== */
@@ -356,6 +404,23 @@
       log: state.log.slice(-40),
       winner: state.winner != null ? { name: state.players[state.winner].name } : null,
       sfx: state.sfx.slice(),
+      challengePopup: state.challengePopup ? {
+        challengerId: state.challengePopup.challengerId,
+        ownerId: state.challengePopup.ownerId,
+        challengerName: state.challengePopup.challengerName,
+        ownerName: state.challengePopup.ownerName,
+        isEarly: state.challengePopup.isEarly,
+        N: state.challengePopup.N,
+        drawCount: state.challengePopup.drawCount || 0,
+      } : null,
+      passChallengePopup: state.passChallengePopup ? {
+        ownerId: state.passChallengePopup.ownerId,
+        ownerName: state.passChallengePopup.ownerName,
+        passerId: state.passChallengePopup.passerId,
+        passerName: state.passChallengePopup.passerName,
+        N: state.passChallengePopup.N,
+        isEarly: state.passChallengePopup.isEarly,
+      } : null,
     };
     // 每位玩家始终能看到自己的手牌（无论是否轮到自己），避免非回合时“手牌为空”
     v.yourHand = state.players[viewerId].hand.map(cardMini);
@@ -385,6 +450,19 @@
     playViewSfx(v);
     render();
     if (v.winner) showWinner(v.winner);
+    if (v.challengePopup && v.challengePopup !== lastShownChallenge && !isModalDecide()) {
+      lastShownChallenge = v.challengePopup;
+      showChallengePopup(v.challengePopup);
+    }
+    if (v.passChallengePopup && v.passChallengePopup !== lastShownPass && !isModalDecide()) {
+      lastShownPass = v.passChallengePopup;
+      showPassChallengePopup(v.passChallengePopup);
+    }
+  }
+  // 是否需要模态操作的决定（观星/预知梦等会弹专用面板）——此时不弹通知弹窗，避免互相覆盖卡死
+  function isModalDecide() {
+    if (!view || !view.decide) return false;
+    return view.decide.kind === "stargaze" || view.decide.kind === "preview";
   }
   function showWinner(w) {
     modalTitle.textContent = "🏆 游戏结束";
@@ -444,6 +522,8 @@
       host.engineToPeer[pid].send(JSON.stringify({ type: "view", view: v }));
     }
     state.sfx.length = 0; // 音效事件已随各视图分发
+    state.challengePopup = null; // 质疑结果已随各视图分发，清空避免重复弹窗
+    state.passChallengePopup = null; // 未质疑结果已随各视图分发，清空避免重复弹窗
     applyView(hostView);
   }
 

@@ -55,6 +55,9 @@ function broadcastViews(room) {
     if (!ws || ws.readyState !== 1) continue;
     send(ws, { type: "view", view: buildView(state, Number(enginePid)) });
   }
+  state.sfx.length = 0; // 事件已随各视图分发，清空避免重复弹提示
+  state.challengePopup = null; // 质疑结果已随视图分发，清空避免重复弹窗
+  state.passChallengePopup = null; // 未质疑结果已随视图分发，清空避免重复弹窗
 }
 function broadcastRoom(room) {
   const names = room.clients.map((c) => c.name);
@@ -78,6 +81,23 @@ function buildView(state, viewerId) {
     log: state.log.slice(-40),
     winner: state.winner != null ? { name: state.players[state.winner].name } : null,
     sfx: state.sfx.slice(),
+    challengePopup: state.challengePopup ? {
+      challengerId: state.challengePopup.challengerId,
+      ownerId: state.challengePopup.ownerId,
+      challengerName: state.challengePopup.challengerName,
+      ownerName: state.challengePopup.ownerName,
+      isEarly: state.challengePopup.isEarly,
+      N: state.challengePopup.N,
+      drawCount: state.challengePopup.drawCount || 0,
+    } : null,
+    passChallengePopup: state.passChallengePopup ? {
+      ownerId: state.passChallengePopup.ownerId,
+      ownerName: state.passChallengePopup.ownerName,
+      passerId: state.passChallengePopup.passerId,
+      passerName: state.passChallengePopup.passerName,
+      N: state.passChallengePopup.N,
+      isEarly: state.passChallengePopup.isEarly,
+    } : null,
   };
   // 每位玩家始终能看到自己的手牌（无论是否轮到自己），避免非回合时“手牌为空”
   view.yourHand = state.players[viewerId].hand.map(cardMini);

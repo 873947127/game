@@ -25,6 +25,7 @@
         </span>
         <button id="musicBtn" class="btn-ghost" type="button">🔇 音乐</button>
         <button id="rulesBtn" class="btn-ghost" type="button">📜 规则</button>
+        <button id="skillBtn" class="btn-ghost" type="button">🧠 技能一览</button>
         <button id="newGameBtn" class="btn-primary" type="button">↻ 重新开局</button>
       </div>
     </header>
@@ -74,8 +75,9 @@
       <h2>🌙 今天几点睡</h2>
       <p class="subtitle">经典唬牌机制 × 夜间主题，看看今晚谁是真正的早睡冠军！</p>
 
-      <!-- 模式选择：单机 / 联机 -->
+      <!-- 模式选择：新手教程 / 单机 / 联机 -->
       <div class="mode-select">
+        <button id="modeTutorialBtn" class="type-btn" type="button">📘 新手教程</button>
         <button id="modeSingleBtn" class="type-btn on-human" type="button">🎮 单机对战</button>
         <button id="modeOnlineBtn" class="type-btn" type="button">🌐 联机对战</button>
       </div>
@@ -108,8 +110,8 @@
   <!-- 规则弹窗 -->
   <div id="rulesOverlay" class="overlay hidden">
     <div class="modal rules">
-      <h2>📜 玩法速览</h2>
-      <div class="rules-body"></div>
+      <h2 id="rulesTitle">📜 玩法速览</h2>
+      <div id="rulesBody" class="rules-body"></div>
       <button id="closeRulesBtn" class="btn-primary" type="button">我知道了</button>
     </div>
   </div>
