@@ -352,6 +352,9 @@
           { id: "t-p1-2", value: 5, skill: null },
         ],
       };
+      // 清空场上扣置的牌，让质疑翻牌动画能够触发（否则仍停留在“扣置卡背”状态）
+      state.currentPlay = { cards: [], ownerId: null, isEarly: false };
+      state.table.cards = [];
       state.players[1].hand = [
         { id: "t-p1-9a", value: 0, skill: null },
         { id: "t-p1-9b", value: 0, skill: null },
@@ -365,11 +368,16 @@
         { id: "t-p0-10", value: 1, skill: null },
       ];
       tutorialStep = 4;
-      showTutorialMessage(
-        "✅ 质疑成功",
-        "质疑成功！他要拿回自己打出的3张牌，并再摸3张牌。",
-        "继续",
-        () => {
+      state.decide = null; // 翻牌动画期间不再显示“质疑/相信”按钮
+      // 先让翻牌动画播完（约 1 秒），再弹说明弹窗，避免弹窗遮挡动画
+      clearTutorialTimer();
+      tutorialTimer = setTimeout(() => {
+        tutorialTimer = null;
+        showTutorialMessage(
+          "✅ 质疑成功",
+          "质疑成功！他要拿回自己打出的3张牌，并再摸3张牌。",
+          "继续",
+          () => {
           state.round = 2;
           state.lightsOutCard = null; // 电脑思考后再翻开
           state.lightsOutTime = null;
@@ -424,8 +432,9 @@
               );
             }, 1000);
           }, 2000);
-        }
-      );
+          }
+        );
+      }, 1000);
       return;
     }
 
@@ -441,27 +450,43 @@
         state.turn = { pid: 0, phase: "challenge" };
         tutorialStep = 5;
         scheduleTutorialAi(5, () => {
+          // 电脑质疑：记录翻牌结果并清空场上扣置的牌，触发质疑翻牌动画
+          state.lastReveal = {
+            isEarly: true,
+            ownerName: "你",
+            challengerName: "电脑",
+            cards: chosen.slice(),
+          };
+          state.currentPlay = { cards: [], ownerId: null, isEarly: false };
+          state.table.cards = [];
           state.round = 3;
           state.lightsOutCard = null;
           state.lightsOutBase = null;
           state.lightsOutTime = null;
           state.turn = { pid: 0, phase: "draw" };
-          state.decide = { kind: "revealLightsOut", pid: 0 };
+          state.decide = null; // 翻牌动画期间不再显示按钮
           state.players[0].hand = [
             { id: "t-p0-2", value: 5, skill: "yanchi" },
             { id: "t-p0-10", value: 1, skill: null },
           ];
-          showTutorialMessage(
-            "⚠️ 电脑质疑",
-            "他选择质疑，质疑失败。<br>他要拿起我们打出的2张牌，并再摸2张牌。<br>他以为我们熬夜了呢，没想到我们乖乖睡觉啦！",
-            "继续",
-            () => {
-              showTutorialMessage(
-                "🎯 第三轮",
-                "轮到我们看熄灯时间了。<br>点击屏幕上的熄灯时间牌翻开。"
-              );
-            }
-          );
+          render(); // 播放质疑翻牌动画
+          // 等翻牌动画播完（约 1 秒）再弹说明弹窗，避免弹窗遮挡动画
+          clearTutorialTimer();
+          tutorialTimer = setTimeout(() => {
+            tutorialTimer = null;
+            state.decide = { kind: "revealLightsOut", pid: 0 }; // 翻牌动画结束后恢复下一阶段决策
+            showTutorialMessage(
+              "⚠️ 电脑质疑",
+              "他选择质疑，质疑失败。<br>他要拿起我们打出的2张牌，并再摸2张牌。<br>他以为我们熬夜了呢，没想到我们乖乖睡觉啦！",
+              "继续",
+              () => {
+                showTutorialMessage(
+                  "🎯 第三轮",
+                  "轮到我们看熄灯时间了。<br>点击屏幕上的熄灯时间牌翻开。"
+                );
+              }
+            );
+          }, 1000);
         }, 4000);
         return;
       }
@@ -1190,6 +1215,10 @@
           currentPlayEl.innerHTML = `
             <div class="cp-label">🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}</div>
             <div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
+          // 每张卡牌翻开时依次播放“选中”音效，与翻牌动画的错峰同步
+          rv.cards.forEach((_, i) => {
+            setTimeout(() => { if (window.SFX) window.SFX.play("select"); }, i * 100);
+          });
         }
       } else {
         currentPlayEl.className = "current-play";
