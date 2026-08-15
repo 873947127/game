@@ -1143,6 +1143,19 @@ button:disabled:hover { transform: none; }
   .hud { gap: 6px; }
   .hud .btn-ghost, .hud .btn-primary { padding: 6px 10px; font-size: 0.82rem; }
 
+  /* 月亮：移动端缩小并下移，避开顶栏按钮；提升层级使其可点击（否则被全屏 #app 盖住） */
+  .moon-btn {
+    z-index: var(--z-float);
+    width: 64px;
+    height: 64px;
+    top: 16%;
+    right: 4%;
+  }
+  .moon-btn .moon-svg {
+    width: 112px;
+    height: 112px;
+  }
+
   /* 对手区紧凑 */
   .opponents { gap: 6px; }
   .opponent { padding: 6px 10px; min-width: 96px; }
