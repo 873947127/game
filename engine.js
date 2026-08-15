@@ -328,7 +328,9 @@
     state.lightsOutCard = null;
     state.lightsOutBase = null;
     state.lightsOutTime = null;
-    state.lastReveal = null;
+    // 注意：这里不能清空 lastReveal。若本轮的质疑正好结束了这一轮（质疑者是谁下家=末位玩家），
+    // endRound -> startRound 会在这里被同步调用，此时界面还没机会渲染翻牌动画。
+    // lastReveal 改在 doPlayCards（下一轮首次出牌）时清空，让翻牌动画有机会播完。
 
     // 翻熄灯时间的人：每轮轮换（从轮换到的座位起找第一个存活的）
     const revealer = firstAliveFrom(state, state.revealIdx);
@@ -607,6 +609,8 @@
       ownerId: t.pid,
       isEarly: computeEarly(cards, personalT),
     };
+    // 新一轮首次出牌时，上一轮的翻牌结果已展示完毕，这里清空供下次质疑翻牌使用
+    state.lastReveal = null;
     state.table.cards.push(...cards);
     p.playedCards.push(...cards);
     state.log.push("🂠 " + p.name + " 扣置打出 " + cards.length + " 张牌。");

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="nebula" aria-hidden="true"></div>
   <div id="app">
     <div id="turnBanner" class="turn-banner"></div>
     <div id="effectToast" class="effect-toast"></div>
@@ -15,8 +16,6 @@
       <div class="brand">🌙 今天几点睡 · 直连</div>
       <div class="hud">
         <span class="pill" id="roundPill">第 1 轮</span>
-        <span class="pill" id="deckPill">牌堆 --</span>
-        <span class="pill" id="discardPill">弃牌 --</span>
         <span class="vol-wrap">
           <input type="range" id="volSlider" min="0" max="100" value="55" title="音量" />
         </span>
@@ -35,16 +34,27 @@
           <div id="roundModifiers" class="round-modifiers"></div>
         </div>
         <div class="center-block">
-          <div class="block-label">🂠 场上的牌（本轮累计）</div>
-          <div id="fieldStack" class="field-stack"></div>
-          <div id="fieldCount" class="field-count">0 张</div>
-        </div>
-        <div class="center-block">
           <div class="block-label">👁 刚刚扣下的牌</div>
           <div id="currentPlay" class="current-play"></div>
         </div>
+        <div class="center-block">
+          <div class="block-label">🂠 牌堆数量</div>
+          <div class="pile-info">
+            <div class="pile" title="抽牌堆">
+              <div class="pile-card" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="#cdd6ff"/><path d="M17.7 5.3l.5 1.1 1.1.5-1.1.5-.5 1.1-.5-1.1-1.1-.5 1.1-.5Z" fill="#ffe9a8"/></svg>
+              </div>
+              <span class="pill" id="deckPill">抽牌堆 --</span>
+            </div>
+            <div class="pile" title="弃牌堆">
+              <div class="pile-card" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="none"><circle cx="12" cy="12" r="4.6" fill="#cdd6ff"/><ellipse cx="12" cy="12" rx="9.6" ry="3" fill="none" stroke="#cdd6ff" stroke-width="1.1" transform="rotate(-20 12 12)"/></svg>
+              </div>
+              <span class="pill" id="discardPill">弃牌堆 --</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div id="revealBox" class="reveal-box hidden"></div>
       <div id="prompt" class="prompt"></div>
       <div id="log" class="log"></div>
     </main>

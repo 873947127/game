@@ -26,9 +26,27 @@
   const $ = (id) => document.getElementById(id);
   const roundPill = $("roundPill"), deckPill = $("deckPill"), discardPill = $("discardPill");
   const opponentsEl = $("opponents"), lightsOutEl = $("lightsOut"), modEl = $("roundModifiers");
-  const fieldStackEl = $("fieldStack"), fieldCountEl = $("fieldCount"), currentPlayEl = $("currentPlay");
+  const currentPlayEl = $("currentPlay");
   const promptEl = $("prompt"), logEl = $("log");
   const playerBarEl = $("playerBar"), handEl = $("hand"), actionsEl = $("actions");
+
+  // 手牌「灯随光标走」发光：只保留 BorderGlow 里“发光随鼠标位置”这一核心，光标坐标写入 CSS 变量
+  if (handEl) {
+    handEl.addEventListener("pointermove", (e) => {
+      const card = e.target.closest(".hand-card");
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      card.style.setProperty("--mx", ((e.clientX - r.left) / r.width * 100).toFixed(1) + "%");
+      card.style.setProperty("--my", ((e.clientY - r.top) / r.height * 100).toFixed(1) + "%");
+      card.style.setProperty("--glow", "1");
+    });
+    handEl.addEventListener("pointerout", (e) => {
+      const card = e.target.closest(".hand-card");
+      if (!card) return;
+      if (e.relatedTarget && card.contains(e.relatedTarget)) return; // 还在同一张牌内部
+      card.style.setProperty("--glow", "0");
+    });
+  }
   const roomOverlay = $("roomOverlay"), lobbyInfo = $("lobbyInfo");
   const modalOverlay = $("modalOverlay"), modalTitle = $("modalTitle"), modalBody = $("modalBody"), modalActions = $("modalActions");
   const effectToastEl = $("effectToast"), rulesOverlay = $("rulesOverlay");
@@ -43,18 +61,30 @@
     const hour = (value + 9) % 12;
     const ang = (hour * 30 * Math.PI) / 180;
     const hx = 12 + 5 * Math.sin(ang), hy = 12 - 5 * Math.cos(ang);
-    const mx = 12 + 7.2 * Math.sin(0), my = 12 - 7.2 * Math.cos(0);
+    const mx = 12 + 7.4 * Math.sin(0), my = 12 - 7.4 * Math.cos(0);
+    // 12 个整点刻度：3/6/9/12 为主刻度，其余为细刻度
+    let ticks = "";
+    for (let i = 0; i < 12; i++) {
+      const a = (i * 30 * Math.PI) / 180;
+      const major = i % 3 === 0;
+      const r1 = major ? 7.4 : 8.0, r2 = 9.0;
+      const x1 = (12 + r1 * Math.sin(a)).toFixed(1), y1 = (12 - r1 * Math.cos(a)).toFixed(1);
+      const x2 = (12 + r2 * Math.sin(a)).toFixed(1), y2 = (12 - r2 * Math.cos(a)).toFixed(1);
+      ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="currentColor" stroke-width="${major ? 0.8 : 0.5}" stroke-linecap="round" opacity="${major ? 0.9 : 0.45}"/>`;
+    }
     return `<svg viewBox="0 0 24 24" width="1.3em" height="1.3em" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="#ffffff" stroke="currentColor" stroke-width="1.2"/>
-      <line x1="12" y1="12" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="#e84c3d" stroke-width="1.8" stroke-linecap="round"/>
-      <line x1="12" y1="12" x2="${mx.toFixed(1)}" y2="${my.toFixed(1)}" stroke="#1a1a1a" stroke-width="1.1" stroke-linecap="round"/>
-      <circle cx="12" cy="12" r="0.9" fill="#1a1a1a"/>
+      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      ${ticks}
+      <line x1="12" y1="12" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <line x1="12" y1="12" x2="${mx.toFixed(1)}" y2="${my.toFixed(1)}" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+      <circle cx="12" cy="12" r="1.0" fill="currentColor"/>
     </svg>`;
   }
   function miniBacks(n) { if (n <= 0) return ""; let h = ""; for (let i = 0; i < Math.min(n, 12); i++) h += '<div class="mini-back"></div>'; return h; }
-  function cardFace(c) {
-    const da = c.skill ? ` data-desc="${attr(SKILLS[c.skill].desc)}"` : "";
-    return `<div class="reveal-card${c.skill ? " skill" : ""}"${da} style="--accent:${TIME_COLORS[c.value]}">
+  function cpBacks(n) { if (n <= 0) return ""; let h = ""; for (let i = 0; i < Math.min(n, 12); i++) h += '<div class="cp-card back"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="#cdd6ff"/><path d="M17.7 5.3l.5 1.1 1.1.5-1.1.5-.5 1.1-.5-1.1-1.1-.5 1.1-.5Z" fill="#ffe9a8"/></svg></div>'; return h; }
+  function cardFace(c, i) {
+    const delay = i != null ? ` animation-delay:${i * 100}ms;` : "";
+    return `<div class="cp-card face flip" style="--accent:${TIME_COLORS[c.value]};${delay}">
       <div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>
       ${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}</div>`;
   }
@@ -66,7 +96,7 @@
       let msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
       if (msg.type === "room") { roomInfo = msg; connected = true; renderLobby(); roomOverlay.classList.remove("hidden"); }
-      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; showChallengePopup(view.challengePopup); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
+      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; setTimeout(() => showChallengePopup(view.challengePopup), 1000); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
       else if (msg.type === "error") alert(msg.message);
     };
     ws.onclose = () => { if (connected) { alert("与服务器断开连接"); location.reload(); } };
@@ -190,12 +220,12 @@
 
   function render() {
     if (!view) return;
-    renderTop(); renderOpponents(); renderLightsOut(); renderTable(); renderReveal(); renderLog(); renderPlayerArea();
+    renderTop(); renderOpponents(); renderLightsOut(); renderTable(); renderLog(); renderPlayerArea();
   }
   function renderTop() {
     roundPill.textContent = "第 " + view.round + " 轮";
-    deckPill.textContent = "牌堆 " + view.deckCount;
-    discardPill.textContent = "弃牌 " + view.discardCount;
+    deckPill.textContent = "抽牌堆 " + view.deckCount;
+    discardPill.textContent = "弃牌堆 " + view.discardCount;
   }
   function isMyTurn() { return view.decide && view.decide.pid === myId(); }
   function renderOpponents() {
@@ -237,22 +267,21 @@
     if (view.curfew && view.rave) mods.push("宵禁×2 与 狂欢÷2 相互抵消");
     else { if (view.curfew) mods.push("宵禁命令（惩罚×2）"); if (view.rave) mods.push("狂欢派对（惩罚÷2）"); }
     modEl.textContent = mods.join(" · ");
-    fieldStackEl.innerHTML = miniBacks(view.tableCount);
-    fieldCountEl.textContent = view.tableCount ? view.tableCount + " 张" : "空";
     if (view.currentPlay) {
       const owner = view.players[view.currentPlay.ownerId];
       currentPlayEl.className = "current-play has-cards";
-      currentPlayEl.innerHTML = `<div class="cp-label">${owner ? owner.name : "?"} 扣下</div><div class="cp-time">× ${view.currentPlay.count}</div><div class="cp-label">（扣置，未知）</div>`;
-    } else { currentPlayEl.className = "current-play"; currentPlayEl.innerHTML = `<div class="cp-label">等待出牌…</div>`; }
-  }
-  function renderReveal() {
-    const rv = view.lastReveal;
-    const box = $("revealBox");
-    if (!rv || !rv.cards || !rv.cards.length) { box.classList.add("hidden"); return; }
-    box.classList.remove("hidden");
-    if (rv !== lastRevealRef) { lastRevealRef = rv; box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop"); }
-    box.innerHTML = `<div class="reveal-title ${rv.isEarly ? "early" : "late"}">🔍 ${rv.challengerName} 质疑 ${rv.ownerName} —— ${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}</div>
-      <div class="reveal-cards">${rv.cards.map(cardFace).join("")}</div>`;
+      currentPlayEl.innerHTML = `<div class="cp-label">${owner ? owner.name : "?"} 扣下 ${view.currentPlay.count} 张</div><div class="cp-cards">${cpBacks(view.currentPlay.count)}</div><div class="cp-label">（扣置，未知）</div>`;
+    } else {
+      const rv = view.lastReveal;
+      if (rv && rv.cards && rv.cards.length) {
+        const sig = rv.challengerName + "|" + rv.ownerName + "|" + rv.isEarly + "|" + rv.cards.map((c) => c.id).join(",");
+        if (sig !== lastRevealRef) {
+          lastRevealRef = sig;
+          currentPlayEl.className = "current-play has-cards revealed";
+          currentPlayEl.innerHTML = `<div class="cp-label">🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}</div><div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
+        }
+      } else { currentPlayEl.className = "current-play"; currentPlayEl.innerHTML = `<div class="cp-label">等待出牌…</div>`; }
+    }
   }
   function renderLog() {
     logEl.innerHTML = "";
@@ -299,7 +328,7 @@
         else if (isMyTurn() && clickMode === "softcandy" && c.id !== (view.decide && view.decide.cardId)) el.addEventListener("click", () => act({ type: "pickSoftCandyCard", cardId: c.id }));
         else if (isMyTurn() && skillMap[c.id]) { el.classList.add("playable"); el.addEventListener("click", () => act(skillMap[c.id])); }
         else el.classList.add("dim");
-        el.innerHTML = `<div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}`;
+        el.innerHTML = `<div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}<i class="card-glow" aria-hidden="true"></i>`;
         el.style.setProperty("--accent", TIME_COLORS[c.value]);
         if (c.skill) el.setAttribute("data-desc", attr(SKILLS[c.skill].desc));
         handEl.appendChild(el);

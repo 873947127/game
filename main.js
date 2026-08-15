@@ -24,6 +24,7 @@
   let shownEliminatePopup = null; // 已经展示过的淘汰弹窗
   let lastHoverAt = 0;            // 悬停音效防抖时间戳
   let lastLightsOutRef = "none"; // 记录上次渲染的熄灯时间牌（用于翻牌动画）
+  let lastLightsOutTimeRef; // 记录上次渲染的熄灯时间值（技能改变时间时刷新卡面）
   let tutorialMode = false;
   let tutorialStep = 0;
   let tutorialAiBlocked = false;
@@ -59,11 +60,29 @@
   }
   const roundPill = $("roundPill"), deckPill = $("deckPill"), discardPill = $("discardPill");
   const opponentsEl = $("opponents"), lightsOutEl = $("lightsOut"), modEl = $("roundModifiers");
-  const fieldStackEl = $("fieldStack"), fieldCountEl = $("fieldCount"), currentPlayEl = $("currentPlay");
+  const currentPlayEl = $("currentPlay");
   const promptEl = $("prompt"), logEl = $("log");
   const turnBannerEl = $("turnBanner");
   const effectToastEl = $("effectToast");
   const playerBarEl = $("playerBar"), handEl = $("hand"), actionsEl = $("actions");
+
+  // 手牌「灯随光标走」发光：只保留 BorderGlow 里“发光随鼠标位置”这一核心，光标坐标写入 CSS 变量
+  if (handEl) {
+    handEl.addEventListener("pointermove", (e) => {
+      const card = e.target.closest(".hand-card");
+      if (!card) return;
+      const r = card.getBoundingClientRect();
+      card.style.setProperty("--mx", ((e.clientX - r.left) / r.width * 100).toFixed(1) + "%");
+      card.style.setProperty("--my", ((e.clientY - r.top) / r.height * 100).toFixed(1) + "%");
+      card.style.setProperty("--glow", "1");
+    });
+    handEl.addEventListener("pointerout", (e) => {
+      const card = e.target.closest(".hand-card");
+      if (!card) return;
+      if (e.relatedTarget && card.contains(e.relatedTarget)) return; // 还在同一张牌内部
+      card.style.setProperty("--glow", "0");
+    });
+  }
   const setupOverlay = $("setupOverlay"), rulesOverlay = $("rulesOverlay"), modalOverlay = $("modalOverlay");
   const modalTitle = $("modalTitle"), modalBody = $("modalBody"), modalActions = $("modalActions");
   const rulesTitle = $("rulesTitle"), rulesBody = $("rulesBody");
@@ -796,6 +815,7 @@
     shownPassChallengePopup = null;
     shownEliminatePopup = null;
     lastLightsOutRef = "none";
+    lastLightsOutTimeRef = undefined;
     pump();
   }
 
@@ -865,7 +885,8 @@
       shownChallengePopup = cp;
       const humanInvolved = humanIds.includes(cp.challengerId) || humanIds.includes(cp.ownerId);
       if (humanInvolved) {
-        showChallengePopup(cp);
+        // 先让翻牌动画播完，再延迟约 1 秒弹窗
+        setTimeout(() => showChallengePopup(cp), 1000);
         return; // 暂停，等玩家确认
       }
     }
@@ -940,7 +961,6 @@
     renderTop();
     renderOpponents();
     renderTable();
-    renderReveal();
     renderLog();
     renderPlayerArea();
     playPendingSfx();
@@ -1033,8 +1053,8 @@
 
   function renderTop() {
     roundPill.textContent = "第 " + state.round + " 轮";
-    deckPill.textContent = "牌堆 " + state.deck.length;
-    discardPill.textContent = "弃牌 " + state.discard.length;
+    deckPill.textContent = "抽牌堆 " + state.deck.length;
+    discardPill.textContent = "弃牌堆 " + state.discard.length;
   }
 
   function activePlayer() {
@@ -1083,18 +1103,28 @@
     return html;
   }
 
-  /** 时间卡牌图案：SVG 时钟，红色时针 + 黑色分针（分针固定指向12） */
+  /** 时间卡牌图案：SVG 时钟（霓虹线框 + 特有色指针，分针固定指向12） */
   function timeIconSvg(value) {
     const hour = (value + 9) % 12; // 对应钟面小时
     const ang = (hour * 30 * Math.PI) / 180; // 时针角度（0 = 指向12）
-    const Lh = 5, Lm = 7.2;
-    const hx = 12 + Lh * Math.sin(ang), hy = 12 - Lh * Math.cos(ang);
-    const mx = 12 + Lm * Math.sin(0), my = 12 - Lm * Math.cos(0); // 分针指向12
+    const hx = 12 + 5 * Math.sin(ang), hy = 12 - 5 * Math.cos(ang);
+    const mx = 12 + 7.4 * Math.sin(0), my = 12 - 7.4 * Math.cos(0); // 分针指向12
+    // 12 个整点刻度：3/6/9/12 为主刻度，其余为细刻度
+    let ticks = "";
+    for (let i = 0; i < 12; i++) {
+      const a = (i * 30 * Math.PI) / 180;
+      const major = i % 3 === 0;
+      const r1 = major ? 7.4 : 8.0, r2 = 9.0;
+      const x1 = (12 + r1 * Math.sin(a)).toFixed(1), y1 = (12 - r1 * Math.cos(a)).toFixed(1);
+      const x2 = (12 + r2 * Math.sin(a)).toFixed(1), y2 = (12 - r2 * Math.cos(a)).toFixed(1);
+      ticks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="currentColor" stroke-width="${major ? 0.8 : 0.5}" stroke-linecap="round" opacity="${major ? 0.9 : 0.45}"/>`;
+    }
     return `<svg viewBox="0 0 24 24" width="1.3em" height="1.3em" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="#ffffff" stroke="currentColor" stroke-width="1.2"/>
-      <line x1="12" y1="12" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="#e84c3d" stroke-width="1.8" stroke-linecap="round"/>
-      <line x1="12" y1="12" x2="${mx.toFixed(1)}" y2="${my.toFixed(1)}" stroke="#1a1a1a" stroke-width="1.1" stroke-linecap="round"/>
-      <circle cx="12" cy="12" r="0.9" fill="#1a1a1a"/>
+      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      ${ticks}
+      <line x1="12" y1="12" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <line x1="12" y1="12" x2="${mx.toFixed(1)}" y2="${my.toFixed(1)}" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+      <circle cx="12" cy="12" r="1.0" fill="currentColor"/>
     </svg>`;
   }
 
@@ -1109,12 +1139,14 @@
     const isRevealPhase = state.decide && state.decide.kind === "revealLightsOut";
     const humanTurn = isRevealPhase && humanIds.includes(state.decide.pid);
     const card = state.lightsOutCard;
+    const t = state.lightsOutTime != null ? state.lightsOutTime : (card ? card.value : null);
 
-    if (card === lastLightsOutRef) {
-      // 状态没变就不重建，避免动画重复播放
+    if (card === lastLightsOutRef && t === lastLightsOutTimeRef) {
+      // 牌和时间都没变就不重建，避免动画重复播放
       return;
     }
     lastLightsOutRef = card;
+    lastLightsOutTimeRef = t;
 
     if (card == null) {
       // 还没翻开：牌背
@@ -1122,8 +1154,7 @@
       lightsOutEl.innerHTML = `<div class="moon-icon">🌙</div><div class="time">?</div>` +
         (humanTurn ? `<div class="reveal-hint">👆 点击翻开熄灯时间</div>` : "");
     } else {
-      // 已翻开：牌面 + 翻牌动画
-      const t = state.lightsOutTime != null ? state.lightsOutTime : card.value;
+      // 已翻开：牌面。若只是时间被技能改动，只更新内容、不重播翻牌动画
       lightsOutEl.className = "lights-out flipped";
       lightsOutEl.innerHTML = `<div class="moon-icon">${timeIconSvg(t)}</div><div class="time">${engine.TIME_NAMES[t]}</div>`;
     }
@@ -1139,57 +1170,44 @@
     }
     modEl.textContent = mods.join(" · ");
 
-    // 场上的牌（累计）：已亮出的技能牌正面朝上，其余扣置
-    const revealedCards = state.table.cards.filter((c) => c.revealed);
-    const hiddenCount = state.table.cards.length - revealedCards.length;
-    fieldStackEl.innerHTML = revealedCards.map(miniFaceUp).join("") + renderMiniBacks(hiddenCount);
-    fieldCountEl.textContent = state.table.cards.length + " 张";
-    if (state.table.cards.length === 0) fieldCountEl.textContent = "空";
-
-    // 刚扣下的牌
+    // 刚扣下的牌：逐张显示扣置卡背；被质疑后在此处原地翻转亮出
     const cp = state.currentPlay;
     if (cp.cards.length) {
       const owner = state.players[cp.ownerId];
       currentPlayEl.className = "current-play has-cards";
       currentPlayEl.innerHTML = `
-        <div class="cp-label">${owner.name} 扣下</div>
-        <div class="cp-time">× ${cp.cards.length}</div>
+        <div class="cp-label">${owner.name} 扣下 ${cp.cards.length} 张</div>
+        <div class="cp-cards">${cp.cards.map(cardBack).join("")}</div>
         <div class="cp-label">（扣置，未知）</div>`;
     } else {
-      currentPlayEl.className = "current-play";
-      currentPlayEl.innerHTML = `<div class="cp-label">等待出牌…</div>`;
+      const rv = state.lastReveal;
+      if (rv && rv.cards && rv.cards.length) {
+        if (rv !== lastRevealRef) {
+          lastRevealRef = rv;
+          currentPlayEl.className = "current-play has-cards revealed";
+          currentPlayEl.innerHTML = `
+            <div class="cp-label">🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}</div>
+            <div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
+        }
+      } else {
+        currentPlayEl.className = "current-play";
+        currentPlayEl.innerHTML = `<div class="cp-label">等待出牌…</div>`;
+      }
     }
   }
 
-  function cardFace(c) {
-    const descAttr = c.skill ? ` data-desc="${attr(engine.SKILLS[c.skill].desc)}"` : "";
-    return `<div class="reveal-card${c.skill ? " skill" : ""}"${descAttr} style="--accent:${engine.TIME_COLORS[c.value]}">
+  /** 扣置卡背（逐张展示在“刚刚扣下的牌”区域） */
+  function cardBack() {
+    return `<div class="cp-card back"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="#cdd6ff"/><path d="M17.7 5.3l.5 1.1 1.1.5-1.1.5-.5 1.1-.5-1.1-1.1-.5 1.1-.5Z" fill="#ffe9a8"/></svg></div>`;
+  }
+
+  function cardFace(c, i) {
+    const delay = i != null ? ` animation-delay:${i * 100}ms;` : "";
+    return `<div class="cp-card face flip" style="--accent:${engine.TIME_COLORS[c.value]};${delay}">
       <div class="cicon">${timeIconSvg(c.value)}</div>
       <div class="t">${engine.TIME_SHORT[c.value]}</div>
       ${c.skill ? `<div class="s">${engine.SKILLS[c.skill].name}</div>` : ""}
     </div>`;
-  }
-
-  /** 质疑翻牌结果：亮出被质疑的牌，全场可见 */
-  function renderReveal() {
-    const rv = state.lastReveal;
-    const box = $("revealBox");
-    if (!rv || !rv.cards || !rv.cards.length) {
-      box.classList.add("hidden");
-      return;
-    }
-    box.classList.remove("hidden");
-    if (rv !== lastRevealRef) {
-      lastRevealRef = rv;
-      box.classList.remove("pop");
-      void box.offsetWidth; // 强制重排，重新播放动画
-      box.classList.add("pop");
-    }
-    box.innerHTML = `
-      <div class="reveal-title ${rv.isEarly ? "early" : "late"}">
-        🔍 ${rv.challengerName} 质疑 ${rv.ownerName} —— ${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}
-      </div>
-      <div class="reveal-cards">${rv.cards.map(cardFace).join("")}</div>`;
   }
 
   function renderLog() {
@@ -1281,7 +1299,8 @@
         }
         el.innerHTML = `<div class="cicon">${timeIconSvg(c.value)}</div>` +
           `<div class="t">${engine.TIME_SHORT[c.value]}</div>` +
-          (c.skill ? `<div class="s">${engine.SKILLS[c.skill].name}</div>` : "");
+          (c.skill ? `<div class="s">${engine.SKILLS[c.skill].name}</div>` : "") +
+          `<i class="card-glow" aria-hidden="true"></i>`;
         el.style.setProperty("--accent", engine.TIME_COLORS[c.value]);
         el.setAttribute("data-id", c.id);
         if (c.skill) el.setAttribute("data-desc", attr(engine.SKILLS[c.skill].desc)); // 悬停显示技能详情
