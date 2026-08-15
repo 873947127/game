@@ -1335,7 +1335,7 @@
       case "revealLightsOut": {
         const isHuman = humanIds.includes(d.pid);
         return isHuman
-          ? `🌙 轮到你翻开今晚的熄灯时间了！点击中间那张牌。`
+          ? `🌙 轮到你翻开今晚的熄灯时间了！点击熄灯时间区的“问号牌”吧。`
           : `🌙 ${p.name} 正在翻开今晚的熄灯时间…`;
       }
       case "roundStartSkill": {

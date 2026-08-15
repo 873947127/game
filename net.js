@@ -348,7 +348,7 @@
       return cur ? "⏳ " + cur.name + " 思考中…" : "等待开始…";
     }
     switch (view.decide.kind) {
-      case "revealLightsOut": return "🌙 轮到你翻开今晚的熄灯时间！点击中间那张牌。";
+      case "revealLightsOut": return "🌙 轮到你翻开今晚的熄灯时间了！点击熄灯时间区的“问号牌”吧。";
       case "roundStartSkill": return "🌙 轮次准备阶段：可打出提前/延迟熄灯、宵禁/狂欢，或直接继续。";
       case "play": return `🎴 你的出牌阶段：选择要扣着打出的牌（至少1张）。熄灯时间：${view.lightsOutTime == null ? "（无）" : TIME_NAMES[view.lightsOutTime]}`;
       case "challenge": { const owner = view.players[view.decide.ownerPid]; return `🔍 你的质疑阶段：${owner.name} 刚扣下了 ${view.decide.N} 张牌。` + (owner.handCount === 0 ? "⚠️ 他打出了所有手牌！" : "要质疑吗？"); }
