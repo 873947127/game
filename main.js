@@ -628,6 +628,8 @@
   if (document && document.addEventListener) {
     document.addEventListener("click", (e) => {
       if (window.SFX && e.target && e.target.closest && e.target.closest("button")) {
+        // 月亮按钮有专属玉碎音效（moon.js 播放 moon.mp3），不再叠加通用按键音
+        if (e.target.closest("#moonBtn")) return;
         window.SFX.unlock();
         window.SFX.play("click");
       }
