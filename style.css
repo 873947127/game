@@ -168,25 +168,38 @@ body::before {
   animation: starDrift 90s linear infinite, starTwinkle 7s ease-in-out infinite;
 }
 
-/* 月亮层：右上角一轮柔和月亮（圆盘 + 内高光 + 极淡月晕，非霓虹） */
-body::after {
-  content: "";
+/* 月亮按钮：右上角柔和发光满月，点击切换月相（满月 → 月牙 → 满月循环）。
+   月相与光晕都用内联 SVG 绘制（SVG 的 feGaussianBlur 光晕能紧贴月牙形状走，
+   不受 CSS mask/clip-path 裁剪影响），按钮本体只负责点击。 */
+.moon-btn {
   position: fixed;
   top: 5%;
   right: 6%;
   z-index: var(--z-sky);
-  pointer-events: none;
   width: 128px;
   height: 128px;
+  padding: 0;
+  border: none;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 38% 32%, #fbfcff, #e4ecf8 58%, #c9d5ec);
-  box-shadow:
-    inset -10px -8px 22px rgba(140, 158, 200, 0.45),
-    0 0 60px 14px rgba(226, 233, 255, 0.16),
-    0 0 150px 44px rgba(226, 233, 255, 0.07);
+  cursor: pointer;
+  background: transparent;
+  overflow: visible;
+  -webkit-appearance: none;
+  appearance: none;
   animation: moonFloat 22s ease-in-out infinite;
 }
+.moon-btn .moon-svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 224px;
+  height: 224px;
+  display: block;
+  pointer-events: none;
+}
+.moon-btn:hover .moon-svg { filter: brightness(1.06); }
+.moon-btn:active .moon-svg { filter: brightness(1.12); }
 
 @keyframes starDrift {
   0% { transform: translate3d(0, 0, 0); }
@@ -1114,7 +1127,7 @@ button:disabled:hover { transform: none; }
 
 /* ---------- 无障碍：减少动态效果 ---------- */
 @media (prefers-reduced-motion: reduce) {
-  body::before, body::after, .nebula,
+  body::before, .moon-btn, .nebula,
   .lights-out.back.clickable,
   .hand-card.playable,
   .card-glow {

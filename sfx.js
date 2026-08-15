@@ -13,12 +13,14 @@
   let playAudio = null;
   let hoverAudio = null;
   let selectAudio = null;
+  let moonAudio = null;
 
-  // 摸牌/出牌/悬停/选中 使用外置 MP3（单文件版会注入 base64 data URI，多文件版读取同目录文件）
+  // 摸牌/出牌/悬停/选中/月亮 使用外置 MP3（单文件版会注入 base64 data URI，多文件版读取同目录文件）
   const DRAW_SRC = root.__DRAW_SRC != null ? root.__DRAW_SRC : "draw.mp3";
   const PLAY_SRC = root.__PLAY_SRC != null ? root.__PLAY_SRC : "play.mp3";
   const HOVER_SRC = root.__HOVER_SRC != null ? root.__HOVER_SRC : "hover.mp3";
   const SELECT_SRC = root.__SELECT_SRC != null ? root.__SELECT_SRC : "select.mp3";
+  const MOON_SRC = root.__MOON_SRC != null ? root.__MOON_SRC : "moon.mp3";
 
   function getAudio(src) {
     if (typeof Audio === "undefined") return null;
@@ -204,6 +206,10 @@
     if (name === "select") {
       if (!selectAudio) selectAudio = getAudio(SELECT_SRC);
       if (selectAudio) { playMp3(selectAudio, 0.5); return; }
+    }
+    if (name === "moon") {
+      if (!moonAudio) moonAudio = getAudio(MOON_SRC);
+      if (moonAudio) { playMp3(moonAudio); return; }
     }
     if (!ensure()) return;
     if (ctx.state === "suspended") ctx.resume();
