@@ -16,6 +16,7 @@
   let aiTimer = null;
   let prevHands = {};          // 各玩家上一次渲染的手牌 id（用于摸牌动画）
   let lastRevealRef = null;    // 上一次渲染过的翻牌记录（用于翻牌动画）
+  let revealedCardsRef = new Set(); // 已亮出并播过翻牌动画的技能牌 id（避免重复翻面）
   let lastRound = 0;           // 用于轮次/回合过渡横幅
   let lastTurnPid = null;
   let winAnnounced = false;    // 胜利音效只播一次
@@ -264,6 +265,30 @@
     modalOverlay.classList.remove("hidden");
   }
 
+  /** 教程完成：弹出“教程完成”并回到开始界面 */
+  function completeTutorial() {
+    tutorialMode = false;
+    tutorialStep = 0;
+    state.winner = 0;
+    tutorialFinished = true; // 阻止 pump 弹出“再来一局”结算
+    if (window.SFX) window.SFX.play("win");
+    showTutorialMessage(
+      "🏆 教程完成",
+      "恭喜您完成教程，接下来体验一下正式对局吧！",
+      "开始对局",
+      () => {
+        tutorialFinished = false;
+        stopAI();
+        document.getElementById("newGameBtn").textContent = "↻ 重新开局";
+        state = null;
+        config = null;
+        setupOverlay.classList.remove("hidden");
+        renderSetup();
+        showRulesPanel("rules");
+      }
+    );
+  }
+
   function handleTutorialAction(action) {
     if (!tutorialMode || !state) return;
 
@@ -273,14 +298,22 @@
       state.lightsOutCard = { id: "t-light-10", value: 1, skill: null };
       state.lightsOutTime = 1;
       state.turn = { pid: 0, phase: "play" };
-      state.decide = { kind: "play", pid: 0 };
+      state.decide = null; // 翻牌动画期间不显示操作
       tutorialStep = 1;
-      showTutorialMessage(
-        "🌙 熄灯时间",
-        "今晚的熄灯时间是<strong>晚上10点</strong>。<br>10点有些太早了，我们试试熬夜吧！<br>打出2张11点试一下。",
-        "继续",
-        () => setPrompt("🎴 请选择两张 11 点牌，然后点击确认出牌。")
-      );
+      // 翻牌动画约 1.5s，播完稍作停顿即弹说明弹窗（避免遮挡动画）
+      clearTutorialTimer();
+      tutorialTimer = setTimeout(() => {
+        tutorialTimer = null;
+        showTutorialMessage(
+          "🌙 熄灯时间",
+          "今晚的熄灯时间是<strong>晚上10点</strong>。<br>10点有些太早了，我们试试熬夜吧！<br>打出2张11点试一下。",
+          "继续",
+          () => {
+            state.decide = { kind: "play", pid: 0 };
+            setPrompt("🎴 请选择两张 11 点牌，然后点击确认出牌。");
+          }
+        );
+      }, 1800);
       return;
     }
 
@@ -320,17 +353,30 @@
                   { id: "t-p1-2", value: 5, skill: null },
                 ], ownerId: 1, isEarly: false };
                 state.table.cards = state.currentPlay.cards.slice();
-                state.decide = { kind: "challenge", pid: 0, ownerPid: 1, N: 3 };
+                // 电脑打出 3 张后，手牌从 5 张减为 2 张（剩余两张 10 点）
+                state.players[1].hand = [
+                  { id: "t-p1-10a", value: 1, skill: null },
+                  { id: "t-p1-10b", value: 1, skill: null },
+                ];
                 state.turn = { pid: 1, phase: "challenge" };
-                showTutorialMessage(
-                  "🔍 质疑时机",
-                  "他打出了三张牌，很大概率也在熬夜。<br>我们来质疑他！<br>点击“质疑他！”即可进行质疑。",
-                  "继续",
-                  () => {
-                    setPrompt("🔍 请选择“质疑他！”来挑战电脑的这组牌。");
-                    renderHumanControls(state.decide);
-                  }
-                );
+                state.decide = null; // 先显示电脑扣下的 3 张牌，暂不显示按钮
+                render();
+                setPrompt("🤖 电脑打出了三张牌…");
+                // 过 1 秒再弹说明弹窗，避免遮挡电脑出牌
+                clearTutorialTimer();
+                tutorialTimer = setTimeout(() => {
+                  tutorialTimer = null;
+                  state.decide = { kind: "challenge", pid: 0, ownerPid: 1, N: 3 };
+                  showTutorialMessage(
+                    "🔍 质疑时机",
+                    "他打出了三张牌，很大概率也在熬夜。<br>我们来质疑他！<br>点击“质疑他！”即可进行质疑。",
+                    "继续",
+                    () => {
+                      setPrompt("🔍 请选择“质疑他！”来挑战电脑的这组牌。");
+                      renderHumanControls(state.decide);
+                    }
+                  );
+                }, 1000);
               }, 4000);
             }
           );
@@ -355,12 +401,16 @@
       // 清空场上扣置的牌，让质疑翻牌动画能够触发（否则仍停留在“扣置卡背”状态）
       state.currentPlay = { cards: [], ownerId: null, isEarly: false };
       state.table.cards = [];
+      // 质疑成功：电脑拿回打出的 3 张牌，再摸 3 张 → 手牌 = 2（剩余）+ 3（拿回）+ 3（摸）= 8 张
       state.players[1].hand = [
+        { id: "t-p1-10a", value: 1, skill: null },
+        { id: "t-p1-10b", value: 1, skill: null },
+        { id: "t-p1-1a", value: 4, skill: null },
+        { id: "t-p1-1b", value: 4, skill: null },
+        { id: "t-p1-2", value: 5, skill: null },
         { id: "t-p1-9a", value: 0, skill: null },
         { id: "t-p1-9b", value: 0, skill: null },
         { id: "t-p1-9c", value: 0, skill: null },
-        { id: "t-p1-10a", value: 1, skill: null },
-        { id: "t-p1-10b", value: 1, skill: null },
       ];
       state.players[0].hand = [
         { id: "t-p0-9a", value: 0, skill: null },
@@ -375,9 +425,10 @@
         tutorialTimer = null;
         showTutorialMessage(
           "✅ 质疑成功",
-          "质疑成功！他要拿回自己打出的3张牌，并再摸3张牌。",
+          "质疑成功！被我们抓到啦！<br>他要拿回自己打出的3张牌，并再摸3张牌。",
           "继续",
           () => {
+          state.lastReveal = null; // 翻牌结果已展示完，进入下一轮前清空
           state.round = 2;
           state.lightsOutCard = null; // 电脑思考后再翻开
           state.lightsOutTime = null;
@@ -392,8 +443,10 @@
           scheduleTutorialAi(4, () => {
             state.lightsOutCard = { id: "t-light-9", value: 0, skill: null };
             state.lightsOutTime = 0;
+            // 电脑回合开始：翻开熄灯时间后也摸 1 张牌（手牌 8 → 9 张）
+            state.players[1].hand.push({ id: "t-p1-9d", value: 0, skill: null });
             tutorialAiBlocked = true; // 等待期间不响应 AI / 玩家操作
-            render(); // 翻牌动画
+            render(); // 翻牌动画 + 更新电脑手牌数
             setPrompt("🤖 电脑翻出了熄灯时间…");
             // 翻开后等 1 秒再弹窗说明
             clearTutorialTimer();
@@ -404,30 +457,48 @@
                 "这轮由他翻开熄灯时间，他翻开的时间是<strong>晚上9点</strong>。",
                 "继续",
                 () => {
-                  // 玩家的回合开始：摸到【延迟熄灯】（摸牌动画由弹窗关闭后的 render 触发）
-                  state.players[0].hand.push({ id: "t-p0-2", value: 5, skill: "yanchi" });
-                  // 摸到后等 1 秒再提示技能牌
+                  // 先等 1.5 秒，再弹“又到了我们的回合”说明
                   clearTutorialTimer();
                   tutorialTimer = setTimeout(() => {
                     tutorialTimer = null;
                     showTutorialMessage(
-                      "✨ 摸到技能牌",
-                      "哇！我们抽到了一张技能牌【延迟熄灯】。<br>它可以在轮次开始时改变熄灯时间。<br>我们可以在之后打出",
+                      "🌟 又到了我们的回合",
+                      "又到了我们的回合啦！<br>正式对局中，每位玩家要在回合开始时抽一张牌。<br>我们来看看会抽到什么吧。",
                       "继续",
                       () => {
-                        showTutorialMessage(
-                          "💡 小提示",
-                          "这一轮的熄灯时间是<strong>晚上9点</strong>，我建议我们选择早睡。",
-                          "继续",
-                          () => {
-                            state.decide = { kind: "play", pid: 0 };
-                            state.turn = { pid: 0, phase: "play" };
-                            tutorialAiBlocked = false;
-                          }
-                        );
+                        // 点击“继续”后摸牌：播放摸牌动画与音效
+                        clearTutorialTimer();
+                        // 稍等一帧，等“继续”按钮的同步重绘完成后再摸牌，避免摸牌动画被立即覆盖
+                        tutorialTimer = setTimeout(() => {
+                          tutorialTimer = null;
+                          state.players[0].hand.push({ id: "t-p0-2", value: 5, skill: "yanchi" });
+                          state.sfx.push({ name: "draw", count: 1 }); // 摸牌音效
+                          render(); // 播放摸牌动画（新牌依次落入）
+                          // 摸牌动画播完后再等 1.5 秒，最后弹技能牌说明
+                          tutorialTimer = setTimeout(() => {
+                            tutorialTimer = null;
+                            showTutorialMessage(
+                              "✨ 摸到技能牌",
+                              "哇！我们抽到了一张技能牌【延迟熄灯】。<br>它可以在轮次开始时改变熄灯时间。<br>我们可以在之后打出。",
+                              "继续",
+                              () => {
+                                showTutorialMessage(
+                                  "💡 小提示",
+                                  "这一轮的熄灯时间是<strong>晚上9点</strong>，我建议我们选择早睡。",
+                                  "继续",
+                                  () => {
+                                    state.decide = { kind: "play", pid: 0 };
+                                    state.turn = { pid: 0, phase: "play" };
+                                    tutorialAiBlocked = false;
+                                  }
+                                );
+                              }
+                            );
+                          }, 1500);
+                        }, 0);
                       }
                     );
-                  }, 1000);
+                  }, 1500);
                 }
               );
             }, 1000);
@@ -480,6 +551,7 @@
               "他选择质疑，质疑失败。<br>他要拿起我们打出的2张牌，并再摸2张牌。<br>他以为我们熬夜了呢，没想到我们乖乖睡觉啦！",
               "继续",
               () => {
+                state.lastReveal = null; // 翻牌结果已展示完，进入下一阶段前清空
                 showTutorialMessage(
                   "🎯 第三轮",
                   "轮到我们看熄灯时间了。<br>点击屏幕上的熄灯时间牌翻开。"
@@ -525,19 +597,34 @@
       }
       state.lightsOutTime = 1;
       state.turn = { pid: 0, phase: "draw" };
-      state.decide = { kind: "play", pid: 0 };
+      state.decide = null; // 摸牌动画期间暂不显示“入梦”按钮
       tutorialStep = 7;
       showTutorialMessage(
         "✨ 技能生效",
-        "太好了，现在熄灯时间变成了晚上10点。<br>我们已经胜券在握。",
+        "太好了，现在熄灯时间变成了晚上10点。<br>不过我们还需要抽一张牌。<br>来看看这次会抽到什么吧。",
         "继续",
         () => {
-          state.players[0].hand = [
-            { id: "t-p0-10", value: 1, skill: null },
-            { id: "t-p0-10b", value: 1, skill: null },
-          ];
-          state.decide = { kind: "play", pid: 0 };
-          renderHumanControls(state.decide);
+          // 先抽一张牌：播放摸牌动画（稍等一帧，避免动画被“继续”按钮的同步重绘覆盖）
+          clearTutorialTimer();
+          tutorialTimer = setTimeout(() => {
+            tutorialTimer = null;
+            state.players[0].hand.push({ id: "t-p0-10b", value: 1, skill: null });
+            state.sfx.push({ name: "draw", count: 1 }); // 摸牌音效
+            render(); // 播放摸牌动画（新牌依次落入）
+            // 摸牌动画播完后再等 1.5 秒，最后弹“抽到 10 点”说明
+            tutorialTimer = setTimeout(() => {
+              tutorialTimer = null;
+              showTutorialMessage(
+                "✨ 抽到 10 点",
+                "哇！我们正好抽到一张晚上10点。<br>现在我们可以选择“入梦”，打出所有手牌直接获胜了！",
+                "继续",
+                () => {
+                  state.decide = { kind: "play", pid: 0 };
+                  renderHumanControls(state.decide);
+                }
+              );
+            }, 1500);
+          }, 0);
         }
       );
       return;
@@ -548,26 +635,7 @@
       const chosen = ids.map((id) => player.hand.find((c) => c.id === id)).filter(Boolean);
       const values = chosen.map((c) => c.value);
       if (ids.length === 2 && values.every((v) => v === 1)) {
-        tutorialMode = false;
-        tutorialStep = 0;
-        state.winner = 0;
-        tutorialFinished = true; // 阻止 pump 弹出“再来一局”结算
-        if (window.SFX) window.SFX.play("win");
-        showTutorialMessage(
-          "🏆 教程完成",
-          "恭喜您完成教程，接下来体验一下正式对局吧！",
-          "开始对局",
-          () => {
-            tutorialFinished = false;
-            stopAI();
-            document.getElementById("newGameBtn").textContent = "↻ 重新开局";
-            state = null;
-            config = null;
-            setupOverlay.classList.remove("hidden");
-            renderSetup();
-            showRulesPanel("rules");
-          }
-        );
+        completeTutorial();
       }
       return;
     }
@@ -835,6 +903,7 @@
     targetMode = false;
     prevHands = {};
     lastRevealRef = null;
+    revealedCardsRef = new Set();
     lastRound = 0;
     lastTurnPid = null;
     winAnnounced = false;
@@ -965,6 +1034,7 @@
         window.SFX.unlock();
         if (action.type === "revealLightsOut") window.SFX.play("reveal");
         else if (action.type === "playCards") window.SFX.play("playCards");
+        else if (action.type === "playRoundStart") window.SFX.play("playCards"); // 使用技能牌也触发出牌音效
       }
       clearTutorialTimer();
       handleTutorialAction(action);
@@ -1197,23 +1267,36 @@
     }
     modEl.textContent = mods.join(" · ");
 
-    // 刚扣下的牌：逐张显示扣置卡背；被质疑后在此处原地翻转亮出
+    // 刚扣下的牌：逐张显示扣置卡背；未被质疑后亮出的技能牌在此翻面朝上，回合结束再一起弃掉
     const cp = state.currentPlay;
     if (cp.cards.length) {
       const owner = state.players[cp.ownerId];
+      let faceCount = 0;
+      const cardsHtml = cp.cards.map((c, i) => {
+        if (c.revealed) {
+          faceCount++;
+          const fresh = !revealedCardsRef.has(c.id);
+          if (fresh) revealedCardsRef.add(c.id);
+          return fresh ? cardFace(c, i, true) : cardFace(c, i, false);
+        }
+        return cardBack();
+      }).join("");
       currentPlayEl.className = "current-play has-cards";
       currentPlayEl.innerHTML = `
-        <div class="cp-label">${owner.name} 扣下 ${cp.cards.length} 张</div>
-        <div class="cp-cards">${cp.cards.map(cardBack).join("")}</div>
-        <div class="cp-label">（扣置，未知）</div>`;
+        <div class="cp-label">${owner.name} 扣下 ${cp.cards.length} 张${faceCount ? `（${faceCount} 张已亮出）` : ""}</div>
+        <div class="cp-cards">${cardsHtml}</div>
+        <div class="cp-label">${faceCount ? "✨ 亮出的技能牌" : "（扣置，未知）"}</div>`;
     } else {
       const rv = state.lastReveal;
       if (rv && rv.cards && rv.cards.length) {
         if (rv !== lastRevealRef) {
           lastRevealRef = rv;
           currentPlayEl.className = "current-play has-cards revealed";
+          const label = rv.skill
+            ? `✨ 亮出技能：${engine.SKILLS[rv.skill] ? engine.SKILLS[rv.skill].name : rv.skill}`
+            : (rv.dream ? "🌙 明牌入梦" : ("🔍 已翻开：" + (rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈")));
           currentPlayEl.innerHTML = `
-            <div class="cp-label">🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}</div>
+            <div class="cp-label">${label}</div>
             <div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
           // 每张卡牌翻开时依次播放“选中”音效，与翻牌动画的错峰同步
           rv.cards.forEach((_, i) => {
@@ -1232,9 +1315,10 @@
     return `<div class="cp-card back"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="#cdd6ff"/><path d="M17.7 5.3l.5 1.1 1.1.5-1.1.5-.5 1.1-.5-1.1-1.1-.5 1.1-.5Z" fill="#ffe9a8"/></svg></div>`;
   }
 
-  function cardFace(c, i) {
+  function cardFace(c, i, flip = true) {
     const delay = i != null ? ` animation-delay:${i * 100}ms;` : "";
-    return `<div class="cp-card face flip" style="--accent:${engine.TIME_COLORS[c.value]};${delay}">
+    const flipCls = flip ? " flip" : "";
+    return `<div class="cp-card face${flipCls}" style="--accent:${engine.TIME_COLORS[c.value]};${delay}">
       <div class="cicon">${timeIconSvg(c.value)}</div>
       <div class="t">${engine.TIME_SHORT[c.value]}</div>
       ${c.skill ? `<div class="s">${engine.SKILLS[c.skill].name}</div>` : ""}
@@ -1291,6 +1375,8 @@
     if (myTurn && clickMode) handEl.classList.remove("empty-hint");
     const prevSet = prevHands[bp.id] || new Set();
     const cards = bp.hand.slice().sort((a, b) => a.value - b.value || (a.skill ? -1 : 1) - (b.skill ? -1 : 1));
+    // 手牌较多时压缩卡牌尺寸：两行手牌也不至于把日志区域挤扁
+    handEl.classList.toggle("crowded", cards.length >= 10);
     if (cards.length === 0) {
       handEl.classList.add("empty-hint");
       handEl.textContent = "手牌为空";
@@ -1414,6 +1500,42 @@
   }
 
   /* ------------------------------ 玩家操作区 ------------------------------ */
+  /** 明牌打出全部手牌直接获胜（手牌只有一种点数时的「入梦」捷径） */
+  function enterDream(p) {
+    stopAI();
+    const cards = p.hand.slice();
+    p.hand = [];
+    p.playedCards.push(...cards);
+    state.currentPlay = { cards: [], ownerId: null, isEarly: false };
+    state.lastReveal = {
+      cards,
+      isEarly: engine.computeEarly(cards, state.lightsOutTime),
+      ownerName: p.name,
+      challengerName: null,
+      dream: true,
+    };
+    state.log.push("🌙 " + p.name + " 明牌亮出全部 " + cards.length + " 张【" + engine.TIME_NAMES[cards[0].value] + "】，入梦获胜！");
+    // 先暂停决策，避免手牌清空后 render 又把操作区重绘成“确认出牌”
+    state.decide = { kind: "gameover" };
+    selected.clear();
+    clickMode = null;
+    targetMode = false;
+    actionsEl.innerHTML = "";
+    setPrompt("🌙 " + p.name + " 打光手牌，进入了金色的梦乡…");
+    if (window.SFX) window.SFX.play("playCards");
+    render();
+    // 间隔 1 秒后弹出结算（教程走“教程完成”，正式对局走“游戏结束”）
+    setTimeout(() => {
+      if (tutorialMode) {
+        completeTutorial();
+      } else {
+        state.winner = p.id;
+        state.decide = { kind: "gameover" };
+        pump();
+      }
+    }, 1000);
+  }
+
   function renderHumanControls(d) {
     actionsEl.innerHTML = "";
     const p = state.players[d.pid];
@@ -1448,15 +1570,25 @@
 
       case "play": {
         clickMode = "play";
+        // 手牌只有一种点数时，全选/全不选可「入梦」明牌获胜；选中一部分仍走正常出牌
+        const singleValue = p.hand.length > 0 && p.hand.every((c) => c.value === p.hand[0].value);
+        const dreamMode = singleValue && (selected.size === 0 || selected.size === p.hand.length);
+
         const confirmBtn = document.createElement("button");
-        confirmBtn.className = "btn-primary";
-        confirmBtn.textContent = "✅ 确认出牌（" + selected.size + "）";
-        confirmBtn.disabled = selected.size === 0;
-        confirmBtn.style.opacity = selected.size === 0 ? 0.5 : 1;
-        confirmBtn.addEventListener("click", () => {
-          if (!selected.size) return;
-          applyAction({ type: "playCards", cardIds: Array.from(selected) });
-        });
+        if (dreamMode) {
+          confirmBtn.className = "btn-dream";
+          confirmBtn.textContent = "🌙 入梦";
+          confirmBtn.addEventListener("click", () => { enterDream(p); });
+        } else {
+          confirmBtn.className = "btn-primary";
+          confirmBtn.textContent = "✅ 确认出牌（" + selected.size + "）";
+          confirmBtn.disabled = selected.size === 0;
+          confirmBtn.style.opacity = selected.size === 0 ? 0.5 : 1;
+          confirmBtn.addEventListener("click", () => {
+            if (!selected.size) return;
+            applyAction({ type: "playCards", cardIds: Array.from(selected) });
+          });
+        }
         actionsEl.appendChild(confirmBtn);
         const cancel = document.createElement("button");
         cancel.className = "btn-ghost";
@@ -1466,7 +1598,12 @@
         // 即时显示当前选中牌的牌型（早睡 / 熬夜）
         const typeEl = document.createElement("div");
         const selCards = p.hand.filter((c) => selected.has(c.id));
-        if (selCards.length === 0) {
+        if (dreamMode) {
+          typeEl.className = "play-type early";
+          typeEl.textContent = selected.size === 0
+            ? "🌙 手牌都是同一种点数，可直接【入梦】明牌获胜"
+            : "🌙 已选中全部手牌，可【入梦】明牌获胜";
+        } else if (selCards.length === 0) {
           typeEl.className = "play-type idle";
           typeEl.textContent = "👆 请选择至少 1 张牌";
         } else if (engine.computeEarly(selCards, state.lightsOutTime)) {
@@ -1477,7 +1614,7 @@
           typeEl.textContent = "😈 当前牌型：熬夜 ⚠️（被质疑会受罚，要小心）";
         }
         actionsEl.appendChild(typeEl);
-        hint.textContent = "点选手牌（可多选），然后点【确认出牌】";
+        hint.textContent = dreamMode ? "手牌点数相同，点击【入梦】直接获胜" : "点选手牌（可多选），然后点【确认出牌】";
         actionsEl.appendChild(hint);
         break;
       }
@@ -1491,7 +1628,7 @@
         actionsEl.appendChild(yes);
         const no = document.createElement("button");
         no.className = "btn-ghost";
-        no.textContent = "🙈 相信他（不质疑）";
+        no.textContent = "🙈 相信他";
         no.addEventListener("click", () => applyAction({ type: "passChallenge" }));
         actionsEl.appendChild(no);
         break;
@@ -1682,8 +1819,8 @@
     }
     // 玩家被质疑
     return cp.isEarly
-      ? "✅ " + cp.challengerName + " 质疑了你！但他的质疑失败了，他要拿回你的所有牌，并再摸 " + X + " 张牌！"
-      : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了，你要拿回所有牌，并再摸 " + X + " 张牌！";
+      ? "✅ " + cp.challengerName + " 质疑了你！但他的质疑失败了。<br>他要拿回你的所有牌，并再摸 " + X + " 张牌！"
+      : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了。<br>你要拿回所有牌，并再摸 " + X + " 张牌！";
   }
 
   function showChallengePopup(cp) {

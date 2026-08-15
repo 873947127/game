@@ -403,6 +403,7 @@
     if (!card || !ROUND_START_SKILLS.includes(card.skill)) return;
     p.hand = p.hand.filter((c) => c.id !== cardId);
     state.discard.push(card);
+    state.lastReveal = { cards: [card], isEarly: null, ownerName: p.name, challengerName: null, skill: card.skill };
     const sk = card.skill;
     if (sk === "tiqian") {
       state.lightsAdjust -= 1;
@@ -745,6 +746,7 @@
     }
     owner.hand = owner.hand.filter((c) => c.id !== card.id);
     state.discard.push(card);
+    state.lastReveal = { cards: [card], isEarly: null, ownerName: owner.name, challengerName: null, skill: card.skill };
     state.pendingPenalty = Math.max(0, state.pendingPenalty - 2);
     state.log.push("😷 " + owner.name + " 亮出【蒸汽眼罩】，本次惩罚摸牌少摸2张。");
     skillToast(state, owner.name, "yanzhao", "本次惩罚摸牌少摸2张");
@@ -768,6 +770,7 @@
     }
     challenger.hand = challenger.hand.filter((c) => c.id !== cardId);
     state.discard.push(card);
+    state.lastReveal = { cards: [card], isEarly: null, ownerName: challenger.name, challengerName: null, skill: card.skill };
     state.log.push("⚡ " + challenger.name + " 打出【" + SKILLS[card.skill].name + "】！");
     switch (card.skill) {
       case "zhuadao":
@@ -925,10 +928,20 @@
     continueEndSkills(state, card);
   }
 
-  /** 亮出发动技能：把扣在桌上的技能牌标记为“已亮出”（不打出/不弃掉，留在场上，本轮结束时随场上牌一起进弃牌堆） */
+  /** 亮出发动技能：把扣在桌上的技能牌翻面亮出（保留在场上，回合结束时再和其它牌一起弃掉） */
   function revealSkillCard(state, cardId) {
-    const card = state.table.cards.find((c) => c.id === cardId);
-    if (card) card.revealed = true;
+    const cur = state.currentPlay && state.currentPlay.cards;
+    const card = (cur && cur.find((c) => c.id === cardId)) || state.table.cards.find((c) => c.id === cardId);
+    if (!card) return;
+    card.revealed = true;
+    const owner = state.currentPlay && state.currentPlay.ownerId != null ? playerById(state, state.currentPlay.ownerId) : null;
+    state.lastReveal = {
+      cards: [card],
+      isEarly: null,
+      ownerName: owner ? owner.name : "",
+      challengerName: null,
+      skill: card.skill,
+    };
   }
 
   function continueEndSkills(state, usedCard) {
@@ -984,6 +997,7 @@
     const cardIds = new Set([cardId, extraCardId]);
     owner.hand = owner.hand.filter((c) => !cardIds.has(c.id));
     state.discard.push(ruang, extra);
+    state.lastReveal = { cards: [ruang, extra], isEarly: null, ownerName: owner.name, challengerName: null, skill: "ruang" };
     state.log.push("🍬 " + owner.name + " 发动【褪黑素软糖】，弃掉" + cardLabel(ruang) + " 和 " + cardLabel(extra) + "。");
     skillToast(state, owner.name, "ruang", "弃掉 2 张手牌");
     afterHandChanged(state);
@@ -1017,6 +1031,16 @@
     const t = state.turn;
     if (!t) return;
     const owner = playerById(state, t.pid);
+
+    // 未被质疑的扣置牌：在出牌者回合结束时即进入弃牌堆，清空扣置区域
+    const played = state.currentPlay && state.currentPlay.cards;
+    if (played && played.length) {
+      const ids = new Set(played.map((c) => c.id));
+      state.discard.push(...played);
+      state.table.cards = state.table.cards.filter((c) => !ids.has(c.id));
+      owner.playedCards = owner.playedCards.filter((c) => !ids.has(c.id));
+      state.currentPlay = { cards: [], ownerId: null, isEarly: false };
+    }
 
     // 回合结束阶段手牌为 0 → 获胜
     if (owner.alive && owner.hand.length === 0) {
@@ -1054,7 +1078,7 @@
     state.currentPlay = { cards: [], ownerId: null, isEarly: false };
     state.lightsOutCard = null;
     for (const p of state.players) p.playedCards = [];
-    state.log.push("本轮结束，场上的牌和熄灯时间移入弃牌堆。");
+    state.log.push("本轮结束，熄灯时间移入弃牌堆。");
 
     if (state.round >= MAX_ROUNDS) {
       // 兜底：轮数过多时手牌最少者胜
@@ -1120,6 +1144,10 @@
     }
     const d = state.decide;
     if (!d || d.kind === "gameover") return state;
+
+    // 进入新的动作处理：清掉上一次质疑翻牌（翻牌动画已在上一轮渲染中播放完），
+    // 避免“翻开的牌”一直停留在桌面直到下次出牌。
+    state.lastReveal = null;
 
     switch (d.kind) {
       case "revealLightsOut":

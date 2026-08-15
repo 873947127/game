@@ -300,6 +300,20 @@ button:disabled:hover { transform: none; }
 }
 .btn-primary:hover { box-shadow: 0 8px 22px rgba(52, 211, 153, 0.32); }
 .btn-primary.big { font-size: 1.15rem; padding: 14px 28px; }
+/* 金色「入梦」按钮：手牌点数相同时明牌打出全部手牌直接获胜 */
+.btn-dream {
+  background: linear-gradient(135deg, #ffe9a8, #ffd166);
+  color: #5a3d00;
+  padding: 8px 16px;
+  font-weight: 800;
+  box-shadow: 0 4px 16px rgba(255, 209, 102, 0.34);
+  animation: dreamPulse 1.6s ease-in-out infinite;
+}
+.btn-dream:hover { box-shadow: 0 8px 24px rgba(255, 209, 102, 0.5); }
+@keyframes dreamPulse {
+  0%, 100% { box-shadow: 0 4px 16px rgba(255, 209, 102, 0.34); }
+  50% { box-shadow: 0 6px 26px rgba(255, 209, 102, 0.62); }
+}
 .btn-danger {
   background: linear-gradient(135deg, #fca5a5, #f87171);
   color: #450a0a;
@@ -833,6 +847,16 @@ button:disabled:hover { transform: none; }
   transform: translateY(-8px);
 }
 .hand-card.dim { opacity: 0.45; pointer-events: none; }
+/* 手牌较多时压缩卡牌尺寸：两行手牌也不至于把日志区域挤扁 */
+.hand.crowded { gap: 6px; }
+.hand.crowded .hand-card {
+  width: 58px;
+  min-height: 78px;
+  gap: 4px;
+}
+.hand.crowded .hand-card .cicon { font-size: 1.3rem; }
+.hand.crowded .hand-card .t { font-size: 0.72rem; }
+.hand.crowded .hand-card .s { font-size: 0.56rem; padding: 1px 5px; max-width: 54px; }
 /* 可直接点击原卡牌发动的技能牌：紫色高亮呼吸提示（功能反馈） */
 .hand-card.playable {
   border-color: #7c3aed;

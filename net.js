@@ -20,6 +20,7 @@
   let targetMode = false;
   let prevHandIds = new Set();
   let lastRevealRef = null;
+  let revealedCardsRef = new Set(); // 已亮出并播过翻牌动画的技能牌 id
   let lastHoverAt = 0;
   let mpCount = 4;
 
@@ -82,9 +83,10 @@
   }
   function miniBacks(n) { if (n <= 0) return ""; let h = ""; for (let i = 0; i < Math.min(n, 12); i++) h += '<div class="mini-back"></div>'; return h; }
   function cpBacks(n) { if (n <= 0) return ""; let h = ""; for (let i = 0; i < Math.min(n, 12); i++) h += '<div class="cp-card back"><svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="#cdd6ff"/><path d="M17.7 5.3l.5 1.1 1.1.5-1.1.5-.5 1.1-.5-1.1-1.1-.5 1.1-.5Z" fill="#ffe9a8"/></svg></div>'; return h; }
-  function cardFace(c, i) {
+  function cardFace(c, i, flip = true) {
     const delay = i != null ? ` animation-delay:${i * 100}ms;` : "";
-    return `<div class="cp-card face flip" style="--accent:${TIME_COLORS[c.value]};${delay}">
+    const flipCls = flip ? " flip" : "";
+    return `<div class="cp-card face${flipCls}" style="--accent:${TIME_COLORS[c.value]};${delay}">
       <div class="cicon">${timeIconSvg(c.value)}</div><div class="t">${TIME_SHORT[c.value]}</div>
       ${c.skill ? `<div class="s">${SKILLS[c.skill].name}</div>` : ""}</div>`;
   }
@@ -134,8 +136,8 @@
         : "🎉 你的质疑成功了！对方要拿回所有牌，并再摸 " + X + " 张牌！";
     } else {
       text = cp.isEarly
-        ? "✅ " + cp.challengerName + " 质疑了你！但他的质疑失败了，他要拿回你的所有牌，并再摸 " + X + " 张牌！"
-        : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了，你要拿回所有牌，并再摸 " + X + " 张牌！";
+        ? "✅ " + cp.challengerName + " 质疑了你！但他的质疑失败了。<br>他要拿回你的所有牌，并再摸 " + X + " 张牌！"
+        : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了。<br>你要拿回所有牌，并再摸 " + X + " 张牌！";
     }
     modalTitle.textContent = "🔍 质疑结果";
     modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
@@ -269,16 +271,24 @@
     modEl.textContent = mods.join(" · ");
     if (view.currentPlay) {
       const owner = view.players[view.currentPlay.ownerId];
+      const rev = view.currentPlay.revealed || [];
+      const backCount = view.currentPlay.count - rev.length;
+      const revHtml = rev.map((c, i) => {
+        const fresh = !revealedCardsRef.has(c.id);
+        if (fresh) revealedCardsRef.add(c.id);
+        return fresh ? cardFace(c, i, true) : cardFace(c, i, false);
+      }).join("");
       currentPlayEl.className = "current-play has-cards";
-      currentPlayEl.innerHTML = `<div class="cp-label">${owner ? owner.name : "?"} 扣下 ${view.currentPlay.count} 张</div><div class="cp-cards">${cpBacks(view.currentPlay.count)}</div><div class="cp-label">（扣置，未知）</div>`;
+      currentPlayEl.innerHTML = `<div class="cp-label">${owner ? owner.name : "?"} 扣下 ${view.currentPlay.count} 张${rev.length ? `（${rev.length} 张已亮出）` : ""}</div><div class="cp-cards">${revHtml}${cpBacks(backCount)}</div><div class="cp-label">${rev.length ? "✨ 亮出的技能牌" : "（扣置，未知）"}</div>`;
     } else {
       const rv = view.lastReveal;
       if (rv && rv.cards && rv.cards.length) {
-        const sig = rv.challengerName + "|" + rv.ownerName + "|" + rv.isEarly + "|" + rv.cards.map((c) => c.id).join(",");
+        const sig = rv.skill ? ("skill|" + rv.cards.map((c) => c.id).join(",")) : (rv.challengerName + "|" + rv.ownerName + "|" + rv.isEarly + "|" + rv.cards.map((c) => c.id).join(","));
         if (sig !== lastRevealRef) {
           lastRevealRef = sig;
           currentPlayEl.className = "current-play has-cards revealed";
-          currentPlayEl.innerHTML = `<div class="cp-label">🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}</div><div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
+          const label = rv.skill ? `✨ 亮出技能：${SKILLS[rv.skill] ? SKILLS[rv.skill].name : rv.skill}` : `🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}`;
+          currentPlayEl.innerHTML = `<div class="cp-label">${label}</div><div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
         }
       } else { currentPlayEl.className = "current-play"; currentPlayEl.innerHTML = `<div class="cp-label">等待出牌…</div>`; }
     }
@@ -390,7 +400,7 @@
         actionsEl.appendChild(typeEl);
         break;
       }
-      case "challenge": addBtn("🔍 质疑他！", "btn-danger", () => act({ type: "challenge" })); addBtn("🙈 相信他（不质疑）", "btn-ghost", () => act({ type: "passChallenge" })); break;
+      case "challenge": addBtn("🔍 质疑他！", "btn-danger", () => act({ type: "challenge" })); addBtn("🙈 相信他", "btn-ghost", () => act({ type: "passChallenge" })); break;
       case "yanzhao": addBtn("😷 使用蒸汽眼罩", "btn-skill", () => act({ type: "useYanzhao" })); addBtn("不使用", "btn-ghost", () => act({ type: "skipYanzhao" })); break;
       case "reaction": for (const sk of d.allowed) { const c = hand.find((x) => x.skill === sk); if (c) addSkillBtn(sk, () => act({ type: "playReaction", cardId: c.id })); } addBtn("跳过", "btn-ghost", () => act({ type: "passReaction" })); break;
       case "giveCard": clickMode = "give"; break;
