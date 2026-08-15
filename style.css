@@ -644,8 +644,8 @@ button:disabled:hover { transform: none; }
   top: 22%;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.28), rgba(79, 91, 213, 0.24));
-  border: 1px solid rgba(196, 181, 253, 0.55);
+  background: linear-gradient(135deg, #34297c, #1d2152);
+  border: 1px solid rgba(196, 181, 253, 0.85);
   color: var(--moon);
   font-size: clamp(0.95rem, 1.8vw, 1.25rem);
   font-weight: 700;
@@ -658,7 +658,7 @@ button:disabled:hover { transform: none; }
   white-space: nowrap;
   text-align: center;
 }
-.effect-toast.show { animation: toastShow 3s var(--ease) forwards; }
+.effect-toast.show { animation: toastShow 4.5s var(--ease) forwards; }
 @keyframes toastShow {
   0% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
   8% { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -672,8 +672,8 @@ button:disabled:hover { transform: none; }
   top: 13%;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, rgba(255, 209, 102, 0.15), rgba(124, 58, 237, 0.18));
-  border: 1px solid rgba(255, 209, 102, 0.5);
+  background: linear-gradient(135deg, #3a2d12, #241c52);
+  border: 1px solid rgba(255, 209, 102, 0.85);
   color: var(--gold);
   font-size: clamp(1.2rem, 2.4vw, 1.7rem);
   font-weight: 800;
@@ -686,7 +686,7 @@ button:disabled:hover { transform: none; }
   box-shadow: 0 18px 44px rgba(4, 7, 18, 0.55);
   white-space: nowrap;
 }
-.turn-banner.show { animation: bannerShow 1.7s var(--ease) forwards; }
+.turn-banner.show { animation: bannerShow 2.6s var(--ease) forwards; }
 @keyframes bannerShow {
   0% { opacity: 0; transform: translateX(-50%) scale(0.8); }
   10% { opacity: 1; transform: translateX(-50%) scale(1.06); }
