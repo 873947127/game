@@ -356,6 +356,7 @@
     recomputeLightsOut(state); // 翻开后立即亮出卡面，技能阶段可再改
     const label = card ? TIME_NAMES[card.value] : "（牌堆已空，本轮无熄灯时间）";
     state.log.push("🌙 " + playerById(state, revealer).name + " 翻开牌堆顶，熄灯时间：" + label);
+    sfxPush(state, "lightsout"); // 翻开熄灯时间音效（lightsout.mp3，随视图广播给全房间）
 
     // 轮次开始技能阶段：从翻灯人开始按座位顺序（有此类技能的玩家决定是否打出，没有的自动跳过）
     state.roundSkillQueue = [];

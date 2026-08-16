@@ -1039,7 +1039,7 @@
     if (tutorialMode) {
       if (window.SFX) {
         window.SFX.unlock();
-        if (action.type === "revealLightsOut") window.SFX.play("reveal");
+        if (action.type === "revealLightsOut") { window.SFX.play("reveal"); window.SFX.play("lightsout"); }
         else if (action.type === "playCards") window.SFX.play("playCards");
         else if (action.type === "playRoundStart") window.SFX.play("playCards"); // 使用技能牌也触发出牌音效
       }
