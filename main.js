@@ -1551,7 +1551,7 @@
     targetMode = false;
     actionsEl.innerHTML = "";
     setPrompt("🌙 " + p.name + " 打光手牌，进入了金色的梦乡…");
-    if (window.SFX) window.SFX.play("playCards");
+    if (window.SFX) window.SFX.play("dream"); // 入梦专属音效（dream.mp3）
     render();
     // 间隔 1 秒后弹出结算（教程走“教程完成”，正式对局走“游戏结束”）
     setTimeout(() => {

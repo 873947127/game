@@ -257,7 +257,7 @@
         if (sig !== lastRevealRef) {
           lastRevealRef = sig;
           currentPlayEl.className = "current-play has-cards revealed";
-          const label = rv.skill ? `✨ 亮出技能：${SKILLS[rv.skill] ? SKILLS[rv.skill].name : rv.skill}` : `🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}`;
+          const label = rv.skill ? `✨ 亮出技能：${SKILLS[rv.skill] ? SKILLS[rv.skill].name : rv.skill}` : (rv.dream ? "🌙 明牌入梦" : `🔍 已翻开：${rv.isEarly ? "确实是「早睡」✅" : "其实是「熬夜」😈"}`);
           currentPlayEl.innerHTML = `<div class="cp-label">${label}</div><div class="cp-cards">${rv.cards.map((c, i) => cardFace(c, i)).join("")}</div>`;
         }
       } else { currentPlayEl.className = "current-play"; currentPlayEl.innerHTML = `<div class="cp-label">等待出牌…</div>`; }
@@ -394,16 +394,26 @@
       }
       case "play": {
         clickMode = "play";
+        // 手牌只有一种点数时，全选/全不选可「入梦」明牌获胜；选中一部分仍走正常出牌
+        const singleValue = hand.length > 0 && hand.every((c) => c.value === hand[0].value);
+        const dreamMode = singleValue && (selected.size === 0 || selected.size === hand.length);
         const confirm = document.createElement("button");
-        confirm.className = "btn-primary";
-        confirm.textContent = "✅ 确认出牌（" + selected.size + "）";
-        confirm.style.opacity = selected.size ? 1 : 0.5;
-        confirm.addEventListener("click", () => { if (!selected.size) return; const ids = Array.from(selected); selected.clear(); sendAction({ type: "playCards", cardIds: ids }); });
+        if (dreamMode) {
+          confirm.className = "btn-dream";
+          confirm.textContent = "🌙 入梦";
+          confirm.addEventListener("click", () => { sendAction({ type: "dreamPlay" }); });
+        } else {
+          confirm.className = "btn-primary";
+          confirm.textContent = "✅ 确认出牌（" + selected.size + "）";
+          confirm.style.opacity = selected.size ? 1 : 0.5;
+          confirm.addEventListener("click", () => { if (!selected.size) return; const ids = Array.from(selected); selected.clear(); sendAction({ type: "playCards", cardIds: ids }); });
+        }
         actionsEl.appendChild(confirm);
         addBtn("清空选择", "btn-ghost", () => { selected.clear(); renderPlayerArea(); });
         const typeEl = document.createElement("div");
         const selCards = hand.filter((c) => selected.has(c.id));
-        if (!selCards.length) { typeEl.className = "play-type idle"; typeEl.textContent = "👆 请选择至少 1 张牌"; }
+        if (dreamMode) { typeEl.className = "play-type early"; typeEl.textContent = selected.size === 0 ? "🌙 手牌都是同一种点数，可直接【入梦】明牌获胜" : "🌙 已选中全部手牌，可【入梦】明牌获胜"; }
+        else if (!selCards.length) { typeEl.className = "play-type idle"; typeEl.textContent = "👆 请选择至少 1 张牌"; }
         else if (engine.computeEarly(selCards, view.lightsOutTime)) { typeEl.className = "play-type early"; typeEl.textContent = "🌙 当前牌型：早睡 ✅"; }
         else { typeEl.className = "play-type late"; typeEl.textContent = "😈 当前牌型：熬夜 ⚠️（被质疑会受罚）"; }
         actionsEl.appendChild(typeEl);
@@ -528,7 +538,7 @@
       lightsOutTime: state.lightsOutTime, curfew: state.curfew, rave: state.rave,
       tableCount: state.table.cards.length,
       currentPlay: state.currentPlay.cards.length ? { ownerId: state.currentPlay.ownerId, count: state.currentPlay.cards.length, revealed: state.currentPlay.cards.filter((c) => c.revealed).map(cardMini) } : null,
-      lastReveal: state.lastReveal ? { isEarly: state.lastReveal.isEarly, ownerName: state.lastReveal.ownerName, challengerName: state.lastReveal.challengerName, skill: state.lastReveal.skill, cards: state.lastReveal.cards.map(cardMini) } : null,
+      lastReveal: state.lastReveal ? { isEarly: state.lastReveal.isEarly, ownerName: state.lastReveal.ownerName, challengerName: state.lastReveal.challengerName, skill: state.lastReveal.skill, dream: state.lastReveal.dream, cards: state.lastReveal.cards.map(cardMini) } : null,
       log: state.log.slice(-40),
       winner: state.winner != null ? { id: state.winner, name: state.players[state.winner].name } : null,
       sfx: state.sfx.slice(),

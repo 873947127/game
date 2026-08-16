@@ -627,6 +627,25 @@
     state.decide = { kind: "challenge", pid: challenger, N: cards.length, ownerPid: t.pid };
   }
 
+  /** 入梦：手牌全部同一点数时，明牌打出全部手牌直接获胜（不可被质疑）。供联机版使用，单机版走界面层 enterDream。 */
+  function doDreamPlay(state) {
+    const t = state.turn;
+    if (!t || t.phase !== "play") return;
+    const p = playerById(state, t.pid);
+    if (!p.alive || p.hand.length === 0) return;
+    const v = p.hand[0].value;
+    if (!p.hand.every((c) => c.value === v)) return; // 必须全部同一点数
+    const cards = p.hand.slice();
+    p.hand = [];
+    p.playedCards.push(...cards);
+    state.currentPlay = { cards: [], ownerId: null, isEarly: false };
+    state.lastReveal = { cards, isEarly: null, ownerName: p.name, challengerName: null, dream: true };
+    state.log.push("🌙 " + p.name + " 明牌亮出全部 " + cards.length + " 张【" + TIME_NAMES[v] + "】，入梦获胜！");
+    sfxPush(state, "dream"); // 入梦音效（随视图广播给全房间）
+    state.winner = p.id;
+    state.decide = { kind: "gameover" };
+  }
+
   /* ------------------------------ 质疑阶段 ------------------------------ */
   function doPassChallenge(state) {
     const challenger = playerById(state, state.decide.pid);
@@ -1172,6 +1191,7 @@
         break;
       case "play":
         if (action.type === "playCards") doPlayCards(state, action.cardIds || []);
+        else if (action.type === "dreamPlay") doDreamPlay(state);
         break;
       case "challenge":
         if (action.type === "challenge") doChallenge(state);

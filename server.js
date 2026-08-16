@@ -79,7 +79,7 @@ function buildView(state, viewerId) {
     lightsOutTime: state.lightsOutTime, curfew: state.curfew, rave: state.rave,
     tableCount: state.table.cards.length,
     currentPlay: state.currentPlay.cards.length ? { ownerId: state.currentPlay.ownerId, count: state.currentPlay.cards.length, revealed: state.currentPlay.cards.filter((c) => c.revealed).map(cardMini) } : null,
-    lastReveal: state.lastReveal ? { isEarly: state.lastReveal.isEarly, ownerName: state.lastReveal.ownerName, challengerName: state.lastReveal.challengerName, skill: state.lastReveal.skill, cards: state.lastReveal.cards.map(cardMini) } : null,
+    lastReveal: state.lastReveal ? { isEarly: state.lastReveal.isEarly, ownerName: state.lastReveal.ownerName, challengerName: state.lastReveal.challengerName, skill: state.lastReveal.skill, dream: state.lastReveal.dream, cards: state.lastReveal.cards.map(cardMini) } : null,
     log: state.log.slice(-40),
     winner: state.winner != null ? { id: state.winner, name: state.players[state.winner].name } : null,
     sfx: state.sfx.slice(),
