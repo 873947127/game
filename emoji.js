@@ -21,7 +21,7 @@
     if (!playerArea) return { showEmoji: () => {} };
     const hand = document.getElementById("hand");
 
-    /* ---------- 表情按钮（手牌区左侧） ---------- */
+    /* ---------- 表情按钮（玩家栏最左侧，不占手牌空间） ---------- */
     const btn = document.createElement("button");
     btn.type = "button";
     btn.id = "emojiBtn";
@@ -29,10 +29,12 @@
     btn.title = "发送表情";
     btn.setAttribute("aria-label", "发送表情");
     btn.textContent = "😀";
-    if (hand) playerArea.insertBefore(btn, hand);
+    const playerBar = playerArea.querySelector("#playerBar");
+    if (playerBar) playerArea.insertBefore(btn, playerBar);
+    else if (hand) playerArea.insertBefore(btn, hand);
     else playerArea.appendChild(btn);
 
-    /* ---------- 表情面板 ---------- */
+    /* ---------- 表情面板（锚定按钮，从按钮上方弹出） ---------- */
     const panel = document.createElement("div");
     panel.className = "emoji-panel hidden";
     for (const e of EMOJIS) {
@@ -58,9 +60,9 @@
       if (panel.classList.contains("hidden")) open();
       else close();
     });
-    // 点击面板以外的任意处关闭
+    // 点击按钮/面板以外的任意处关闭
     document.addEventListener("click", (e) => {
-      if (btn.contains(e.target)) return;
+      if (btn.contains(e.target) || panel.contains(e.target)) return;
       close();
     });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });

@@ -753,9 +753,10 @@ button:disabled:hover { transform: none; }
   -webkit-backdrop-filter: blur(12px) saturate(1.15);
   box-shadow: var(--shadow-panel);
 }
-/* 左侧：玩家信息（竖排） */
+/* 左侧：玩家信息（竖排）。flex-basis 为表情按钮(36px)+ 信息(124px)让位，不挤占手牌 */
 .player-bar {
   flex: 0 0 160px;
+  min-width: 0; /* 防极端情况溢出；常规内容(名字/手牌数)不截断 */
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -764,8 +765,8 @@ button:disabled:hover { transform: none; }
   padding-right: 16px;
   border-right: 1px solid var(--line);
 }
-.player-bar .name { font-weight: 800; font-size: 1.1rem; color: var(--gold); }
-.player-bar .info { color: var(--muted); font-size: 0.85rem; }
+.player-bar .name { font-weight: 800; font-size: 1.1rem; color: var(--gold); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-bar .info { color: var(--muted); font-size: 0.85rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 中间：手牌（弹性撑开） */
 .hand {
@@ -1051,16 +1052,17 @@ button:disabled:hover { transform: none; }
 
 /* ---------- 表情系统（联机） ---------- */
 .emoji-trigger {
-  position: relative; /* 表情面板的定位包含块 */
-  flex: 0 0 auto;
+  position: relative;
+  z-index: var(--z-float); /* 让按钮整体(含表情面板)浮在手牌之上，不被遮挡 */
+  flex: 0 0 36px;
   align-self: center;
-  width: 46px;
-  height: 46px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: linear-gradient(165deg, #3a2f6e, #211a52 60%, #171040);
   border: 1px solid rgba(196, 181, 253, 0.6);
   color: var(--moon);
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -1078,9 +1080,9 @@ button:disabled:hover { transform: none; }
 
 .emoji-panel {
   position: absolute;
-  bottom: calc(100% + 12px);
+  bottom: calc(100% + 10px);
   left: 0;
-  z-index: var(--z-float);
+  z-index: var(--z-float); /* 高于卡牌，避免被遮挡 */
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
@@ -1466,19 +1468,16 @@ button:disabled:hover { transform: none; }
   .actions { flex-direction: row; flex-wrap: wrap; align-items: center; border-left: none; padding-left: 0; flex: 0 0 auto; }
   .hand { justify-content: center; }
 
-  /* 表情按钮：手机端改为浮在手牌区左侧、垂直居中（脱离纵向 flex 流） */
+  /* 表情按钮：手机端浮在玩家区最左侧、垂直居中（脱离纵向 flex 流，不挤手牌）。
+     用 calc 定位而非 transform，避免 transform 创建层叠上下文把面板困在按钮下 */
   .emoji-trigger {
     position: absolute;
     left: 6px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: calc(50% - 18px);
     width: 36px;
     height: 36px;
     font-size: 1.2rem;
   }
-  .emoji-panel { left: 0; }
-  /* 给手牌让出左侧按钮的空间，避免满手牌时卡片被遮住 */
-  .hand { margin-left: 40px; }
 }
 
 /* ---------- 无障碍：减少透明度（毛玻璃回退为实底） ---------- */
