@@ -26,7 +26,7 @@
   const SKILLS = {
     huilongjue:  { id: "huilongjue",  name: "回笼觉",     value: 0, trigger: "endPhase", desc: "若你本回合扣置打出了这张牌，且未被质疑，则你可以在结束阶段亮出这张牌，然后获得一个新的不含摸牌阶段的回合。" },
     taohuayuan:  { id: "taohuayuan",  name: "梦中桃花源", value: 0, trigger: "endPhase", desc: "若你本回合扣置打出了包含这张牌在内的3张及以上的牌，且未被质疑，则你可以在结束阶段与下家互换手牌。" },
-    ruang:       { id: "ruang",       name: "褪黑素软糖", value: 0, trigger: "endPhase", desc: "若你本回合扣置打出其它手牌后未被质疑，则你可以在结束阶段打出包含这张牌在内的任意2张牌。" },
+    ruang:       { id: "ruang",       name: "褪黑素软糖", value: 0, trigger: "endPhase", desc: "若你本回合扣置打出其它手牌后未被质疑，则你可以在结束阶段打出包含这张牌在内的任意2张牌。这张牌在本体被打出的时候不会触发。" },
     qingxingmeng:{ id: "qingxingmeng",name: "清醒梦",     value: 1, trigger: "endPhase", desc: "若你本回合扣置打出了这张牌，且未被质疑，则你可以在结束阶段亮出这张牌，然后令一名玩家摸3张牌。" },
     emeng:       { id: "emeng",       name: "噩梦",       value: 1, trigger: "endPhase", desc: "若你本回合扣置打出了这张牌，且未被质疑，则你可以在结束阶段亮出这张牌，然后令除你以外的所有玩家各摸1张牌。" },
     yuzhimeng:   { id: "yuzhimeng",   name: "预知梦",     value: 1, trigger: "endPhase", desc: "若你本回合扣置打出了这张牌，且未被质疑，则你可以在结束阶段亮出这张牌，然后观看任意一名玩家至多5张手牌。" },
@@ -138,6 +138,9 @@
         seenCards: [],
         playedCards: [], // 本回合扣置在场上、属于这名玩家的牌（未被质疑收回）
         lastGain: "开局发牌", // 最近一次获得手牌的来源（用于淘汰弹窗说明）
+        // 本局统计（供结算页回顾展示）
+        challengeMade: 0, challengeWon: 0, challengeLost: 0, challengedTimes: 0,
+        eliminatedRound: null, // 被淘汰时的轮数；null = 未淘汰
       };
     });
     const state = {
@@ -270,6 +273,7 @@
       if (!p.alive) continue;
       if (p.hand.length >= 21) {
         p.alive = false;
+        p.eliminatedRound = state.round; // 本局统计：被淘汰时的轮数
         state.discard.push(...p.hand);
         state.log.push("💀 " + p.name + " 手牌达到 " + p.hand.length + " 张，被淘汰出局！");
         state.eliminatePopup = { name: p.name, count: p.hand.length, reason: p.lastGain || "摸牌" };
@@ -644,7 +648,8 @@
       (c.skill !== "taohuayuan" || played.length >= 3)
     );
     const ruangCards = owner.hand.filter((c) => c.skill === "ruang");
-    const ruang = ruangCards.length && played.length > 0 ? ruangCards[0] : null;
+    // 软糖触发条件：本回合扣置打出过“其它手牌”（非软糖本体）且未被质疑
+    const ruang = ruangCards.length && played.some((c) => c.skill !== "ruang") ? ruangCards[0] : null;
     state.endSkillPool = { endSkills, ruang };
     const allowed = endSkills.map((c) => c.id).concat(ruang ? [ruang.id] : []);
     if (allowed.length) {
@@ -659,6 +664,9 @@
     const owner = playerById(state, state.turn.pid);
     const cards = state.currentPlay.cards;
     const N = cards.length;
+    // 本局统计：发起质疑 / 被质疑次数
+    challenger.challengeMade += 1;
+    owner.challengedTimes += 1;
     // 出牌时已按该玩家的个人熄灯时间（含热牛奶）判定了早睡/熬夜，质疑沿用同一结果
     const isEarly = state.currentPlay.isEarly;
     const labels = cards.map(cardLabel).join("，");
@@ -675,6 +683,7 @@
       sfxPush(state, "challengeFail");
       state.lastReveal = { cards, isEarly: true, ownerName: owner.name, challengerName: challenger.name };
       state.log.push("🔍 " + challenger.name + " 质疑 " + owner.name + "！翻开：" + labels + " —— 确实是“早睡”，质疑失败！");
+      challenger.challengeLost += 1;
       challenger.hand.push(...cards);
       challenger.lastGain = "质疑失败，拿起对方的牌";
       sfxPush(state, { name: "draw", count: cards.length }); // 质疑失败拿起的牌也按张数触发
@@ -702,6 +711,7 @@
       sfxPush(state, "challengeSuccess");
       state.lastReveal = { cards, isEarly: false, ownerName: owner.name, challengerName: challenger.name };
       state.log.push("🔍 " + challenger.name + " 质疑 " + owner.name + "！翻开：" + labels + " —— 果然是“熬夜”，质疑成功！");
+      challenger.challengeWon += 1;
       owner.hand.push(...cards);
       owner.lastGain = "熬夜被抓，拿回自己的牌";
       sfxPush(state, { name: "draw", count: cards.length }); // 质疑成功拿回的牌也按张数触发

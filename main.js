@@ -66,6 +66,8 @@
   const turnBannerEl = $("turnBanner");
   const effectToastEl = $("effectToast");
   const playerBarEl = $("playerBar"), handEl = $("hand"), actionsEl = $("actions");
+  const playerAreaEl = document.querySelector(".player-area");
+  const seatEls = {}; // pid -> 座位元素（表情气泡的定位锚点，自己在 renderOpponents 里重建）
 
   // 手牌「灯随光标走」发光：只保留 BorderGlow 里“发光随鼠标位置”这一核心，光标坐标写入 CSS 变量
   if (handEl) {
@@ -672,6 +674,7 @@
   /* ------------------------------ 背景音乐控制 ------------------------------ */
   let musicUserChoice = null; // null=未选择；'on'=要音乐；'off'=不要音乐
   const musicBtn = $("musicBtn");
+  const nextBtn = $("nextBtn");
   const volSlider = $("volSlider");
 
   function updateMusicUI() {
@@ -685,6 +688,13 @@
   musicBtn.addEventListener("click", () => {
     if (!window.BGM) return;
     window.BGM.toggle();
+    musicUserChoice = window.BGM.isOn() ? "on" : "off";
+    updateMusicUI();
+  });
+
+  nextBtn.addEventListener("click", () => {
+    if (!window.BGM) return;
+    window.BGM.next();
     musicUserChoice = window.BGM.isOn() ? "on" : "off";
     updateMusicUI();
   });
@@ -975,24 +985,21 @@
     render();
     // 观星/预知梦等需要弹专用面板的决策进行中时，不弹通知弹窗，避免互相覆盖导致卡死
     const modalDecide = d && (d.kind === "stargaze" || d.kind === "preview");
-    // 质疑结果弹窗：玩家参与时弹出（需点“知道了”继续）；电脑互搏不弹（看场上翻牌即可）
+    // 质疑结果播报：玩家参与时立即以 toast 提示（与翻牌动画同时出现，不阻塞流程）；电脑互搏不播
     const cp = state.challengePopup;
     if (cp && cp !== shownChallengePopup && !modalDecide) {
       shownChallengePopup = cp;
       const humanInvolved = humanIds.includes(cp.challengerId) || humanIds.includes(cp.ownerId);
       if (humanInvolved) {
-        // 先让翻牌动画播完，再延迟约 1 秒弹窗
-        setTimeout(() => showChallengePopup(cp), 1000);
-        return; // 暂停，等玩家确认
+        showChallengePopup(cp);
       }
     }
-    // 下家未质疑弹窗：只给“打出牌的人”显示提示（需点“知道了”继续）
+    // 下家未质疑播报：只给“打出牌的人”显示提示（自动消失，不阻塞流程）
     const ppc = state.passChallengePopup;
     if (ppc && ppc !== shownPassChallengePopup && !modalDecide) {
       shownPassChallengePopup = ppc;
       if (humanIds.includes(ppc.ownerId)) {
         showPassChallengePopup(ppc);
-        return; // 暂停，等玩家确认
       }
     }
     // 淘汰弹窗：任何玩家被淘汰都弹出说明（需点“知道了”继续）
@@ -1116,6 +1123,14 @@
     effectToastEl.classList.add("show");
   }
 
+  /** 播报式通知（技能通知样式）：标题 + 正文，自动消失，无需点击 */
+  function showBroadcast(title, bodyHtml) {
+    effectToastEl.innerHTML = (title ? `<div class="tb-title">${title}</div>` : "") + `<div class="tb-text">${bodyHtml}</div>`;
+    effectToastEl.classList.remove("show");
+    void effectToastEl.offsetWidth;
+    effectToastEl.classList.add("show");
+  }
+
   /** 淘汰弹窗：说明总手牌数和获得来源 */
   function showEliminatePopup(ep) {
     modalTitle.textContent = "💀 淘汰出局";
@@ -1189,6 +1204,7 @@
         <div class="back-pile">${renderMiniBacks(p.hand.length)}</div>
         <div class="opp-badges">${badges.join("")}</div>`;
       opponentsEl.appendChild(el);
+      seatEls[p.id] = el;
     }
   }
 
@@ -1359,16 +1375,29 @@
     return map;
   }
 
+  // 淘汰预警文案：手牌接近 21 张上限时提示“再摸 X 张就淘汰”
+  function elimWarnText(hc) {
+    if (hc < 15) return "";
+    const left = 21 - hc;
+    const danger = hc >= 18;
+    return ' <span class="elim-hint' + (danger ? " danger" : "") + '">⚠️ 再摸 ' + left + " 张就淘汰</span>";
+  }
+
   function renderPlayerArea() {
     const bp = bottomPlayer();
     const isMyTurn = state.decide && state.decide.pid === bp.id && !bp.isAI;
     const myTurn = isMyTurn;
+    // 淘汰预警：手牌逼近上限时给手牌区渐进变色
+    const hc = bp.hand.length;
+    handEl.classList.toggle("elim-warn", hc >= 15);
+    handEl.classList.toggle("elim-danger", hc >= 18);
+    handEl.classList.toggle("myturn", myTurn);
     // 先确定操作模式，再画手牌（否则牌会被画成不可点击的灰暗状态）
     clickMode = myTurn ? clickModeFor(state.decide) : null;
     const skillMap = myTurn ? skillCardActions(state.decide, bp.hand) : {};
     playerBarEl.innerHTML = `
       <span class="name">${bp.name} ${myTurn ? "👈 你的回合" : ""}</span>
-      <span class="info">手牌 ${bp.hand.length} 张${myTurn ? " · 熄灯时间：" + (state.lightsOutTime == null ? "无" : engine.TIME_NAMES[state.lightsOutTime]) : ""}</span>`;
+      <span class="info">手牌 ${bp.hand.length} 张${myTurn ? " · 熄灯时间：" + (state.lightsOutTime == null ? "无" : engine.TIME_NAMES[state.lightsOutTime]) : ""}${elimWarnText(hc)}</span>`;
 
     // 手牌
     handEl.innerHTML = "";
@@ -1823,40 +1852,37 @@
       : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了。<br>你要拿回所有牌，并再摸 " + X + " 张牌！";
   }
 
+  /** 质疑结果播报：以技能通知式 toast 展示（自动消失，无需点击） */
   function showChallengePopup(cp) {
-    modalTitle.textContent = "🔍 质疑结果";
-    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${challengePopupText(cp)}</div>`;
-    modalActions.innerHTML = "";
-    const ok = document.createElement("button");
-    ok.className = "btn-primary";
-    ok.textContent = "知道了";
-    ok.addEventListener("click", () => {
-      modalOverlay.classList.add("hidden");
-      pump();
-    });
-    modalActions.appendChild(ok);
+    flyPenaltyCards(cp.drawerId);
+    showBroadcast("🔍 质疑结果", challengePopupText(cp));
     playPopupSfx();
-    modalOverlay.classList.remove("hidden");
   }
 
-  /** 下家未质疑弹窗：提示打出者“没被质疑” */
+  /** 下家未质疑播报：提示打出者“没被质疑” */
   function showPassChallengePopup(ppc) {
     const text = ppc.isEarly
       ? "😌 " + ppc.passerName + " 没有质疑你，相信了你打出的 " + ppc.N + " 张牌！"
       : "😈 " + ppc.passerName + " 没有质疑你！你成功隐瞒了 " + ppc.N + " 张牌。";
-    modalTitle.textContent = "🙈 未被质疑";
-    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
-    modalActions.innerHTML = "";
-    const ok = document.createElement("button");
-    ok.className = "btn-primary";
-    ok.textContent = "知道了";
-    ok.addEventListener("click", () => {
-      modalOverlay.classList.add("hidden");
-      pump();
-    });
-    modalActions.appendChild(ok);
+    showBroadcast("🙈 未被质疑", text);
     playPopupSfx();
-    modalOverlay.classList.remove("hidden");
+  }
+
+  // 本局回顾统计：质疑成败 / 被质疑次数 / 淘汰轮数
+  function buildStatsHtml(players, winnerId) {
+    if (!players || !players.length) return "";
+    const rows = players.map((p) => {
+      const parts = [];
+      if (p.challengeMade) parts.push("质疑 " + p.challengeWon + "胜" + p.challengeLost + "负");
+      if (p.challengedTimes) parts.push("被质疑 " + p.challengedTimes + "次");
+      if (!parts.length) parts.push("未质疑");
+      let status;
+      if (p.id === winnerId) status = "🏆 获胜";
+      else if (p.eliminatedRound != null) status = "💀 第" + p.eliminatedRound + "轮淘汰";
+      else status = "🌙 存活";
+      return `<div class="stat-row"><span class="stat-name">${attr(p.name)}</span><span class="stat-info">${parts.join(" · ")}</span><span class="stat-status">${status}</span></div>`;
+    }).join("");
+    return `<div class="game-stats"><div class="gs-title">📊 本局回顾</div>${rows}</div>`;
   }
 
   function showGameOver() {
@@ -1867,7 +1893,7 @@
         <span class="big-emoji">🎉</span>
         ${w ? w.name : "本局"} 第一个睡着了，赢得胜利！<br>
         <span style="font-size:0.85rem;color:var(--muted)">用了 ${state ? state.round : 0} 轮</span>
-      </div>`;
+      </div>${buildStatsHtml(state.players, state.winner)}`;
     modalActions.innerHTML = "";
     const again = document.createElement("button");
     again.className = "btn-primary";
@@ -1939,9 +1965,9 @@
     </ul>
     <h3>🔁 每轮流程</h3>
     <ul>
-      <li>首位玩家翻开牌堆顶1张作为【熄灯时间】（每轮轮换）。</li>
+      <li>每轮由轮换的翻灯玩家翻开牌堆顶1张作为【熄灯时间】。</li>
       <li>然后按顺序每人一个回合：开始→摸牌→出牌→质疑→结束。</li>
-      <li>最后一名玩家回合结束后，场上的牌放入弃牌堆，开始新一轮。</li>
+      <li>每位玩家回合结束后，未被质疑的扣置牌移入弃牌堆；本轮最后一名玩家回合结束后，熄灯时间一并移入弃牌堆，开始新一轮。</li>
     </ul>
     <h3>😴 早睡 / 熬夜</h3>
     <ul>
@@ -1964,6 +1990,55 @@
   }
 
   /* ------------------------------ 启动 ------------------------------ */
+  /* ---------- 座位定位（表情气泡 / 牌转移动画共用） ---------- */
+  function seatElFor(pid) { return pid === (bottomPlayer() ? bottomPlayer().id : null) ? playerAreaEl : seatEls[pid] || null; }
+
+  /* ---------- 牌转移动画：质疑结算后，翻开的牌飞向接收者座位 ---------- */
+  function flyPenaltyCards(pid) {
+    const cards = document.querySelectorAll("#currentPlay .cp-card.face");
+    if (!cards.length) return;
+    // 桌面原牌虚化：说明牌已随动画转移走，但仍保留信息供查看
+    cards.forEach((c) => c.classList.add("ghost"));
+    const to = seatElFor(pid);
+    if (!to) return;
+    const tr = to.getBoundingClientRect();
+    const tx = tr.left + tr.width / 2, ty = tr.top + tr.height / 2;
+    cards.forEach((card, i) => {
+      const r = card.getBoundingClientRect();
+      const fly = document.createElement("div");
+      fly.className = "fly-card";
+      fly.innerHTML = card.innerHTML;
+      fly.style.left = r.left + "px";
+      fly.style.top = r.top + "px";
+      fly.style.width = r.width + "px";
+      fly.style.height = r.height + "px";
+      document.body.appendChild(fly);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fly.style.transform = "translate(" + (tx - r.left - r.width / 2) + "px, " + (ty - r.top - r.height / 2) + "px) rotate(" + (Math.random() * 24 - 12) + "deg) scale(0.72)";
+        fly.style.opacity = "0";
+      }));
+      setTimeout(() => fly.remove(), 650 + i * 60);
+    });
+    // 目标座位冒出“+N”数字
+    const pop = document.createElement("div");
+    pop.className = "seat-pop";
+    pop.style.left = tx + "px";
+    pop.style.top = ty + "px";
+    pop.textContent = "+" + cards.length;
+    document.body.appendChild(pop);
+    setTimeout(() => pop.remove(), 750);
+  }
+
+  /* ---------- 表情系统（单机）：热座同屏，点按钮从当前真人座位冒气泡 ---------- */
+  const emojiChat = window.EmojiChat.create({
+    sendEmoji: (emoji) => {
+      const bp = bottomPlayer();
+      if (bp) emojiChat.showEmoji(bp.id, emoji, bp.name);
+    },
+    seatEl: seatElFor,
+    myPid: () => (bottomPlayer() ? bottomPlayer().id : null),
+  });
+
   // 打开游戏先询问是否进行新手教程（选“是”进教程；选“否”则显示规则提示）
   renderSetup();
   showTutorialIntroModal();

@@ -30,6 +30,11 @@
   const currentPlayEl = $("currentPlay");
   const promptEl = $("prompt"), logEl = $("log");
   const playerBarEl = $("playerBar"), handEl = $("hand"), actionsEl = $("actions");
+  const turnBannerEl = $("turnBanner");
+  const playerAreaEl = document.querySelector(".player-area");
+  const seatEls = {}; // pid -> 座位元素（表情气泡的定位锚点，自己在 renderOpponents 里重建）
+  let lastTurnPid = null; // 最近一次播报过回合横幅的玩家
+  let titleFlashTimer = null; // 标签页“轮到你”闪烁定时器
 
   // 手牌「灯随光标走」发光：只保留 BorderGlow 里“发光随鼠标位置”这一核心，光标坐标写入 CSS 变量
   if (handEl) {
@@ -98,8 +103,9 @@
       let msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
       if (msg.type === "room") { roomInfo = msg; connected = true; renderLobby(); roomOverlay.classList.remove("hidden"); }
-      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; setTimeout(() => showChallengePopup(view.challengePopup), 1000); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
+      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; showChallengePopup(view.challengePopup); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
       else if (msg.type === "error") alert(msg.message);
+      else if (msg.type === "emoji") emojiChat.showEmoji(msg.pid, msg.emoji, msg.name);
     };
     ws.onclose = () => { if (connected) { alert("与服务器断开连接"); location.reload(); } };
   }
@@ -109,6 +115,54 @@
     effectToastEl.classList.remove("show");
     void effectToastEl.offsetWidth;
     effectToastEl.classList.add("show");
+  }
+  /** 播报式通知（技能通知样式）：标题 + 正文，自动消失，无需点击 */
+  function showBroadcast(title, bodyHtml) {
+    effectToastEl.innerHTML = (title ? `<div class="tb-title">${title}</div>` : "") + `<div class="tb-text">${bodyHtml}</div>`;
+    effectToastEl.classList.remove("show");
+    void effectToastEl.offsetWidth;
+    effectToastEl.classList.add("show");
+  }
+  /** 回合切换横幅（自动消失） */
+  function showTurnBanner(text) {
+    turnBannerEl.textContent = text;
+    turnBannerEl.classList.remove("show");
+    void turnBannerEl.offsetWidth;
+    turnBannerEl.classList.add("show");
+  }
+  /** 轮到你且切到后台时，让浏览器标签页标题闪烁提示 */
+  function flashTabTitle() {
+    if (!document.hidden) return;
+    const base = document.title;
+    if (titleFlashTimer) clearInterval(titleFlashTimer);
+    titleFlashTimer = setInterval(() => {
+      document.title = document.title.indexOf("🌟 [你的回合]") === 0 ? base : "🌟 [你的回合] " + base;
+    }, 800);
+    const restore = () => {
+      if (!document.hidden) {
+        clearInterval(titleFlashTimer);
+        titleFlashTimer = null;
+        document.title = base;
+        document.removeEventListener("visibilitychange", restore);
+      }
+    };
+    document.addEventListener("visibilitychange", restore);
+  }
+  /** 检测回合切换：轮到你播横幅+音效+标签闪烁，否则播“轮到 XX” */
+  function checkTurnChange() {
+    if (!view) return;
+    const pid = view.currentPlayerId;
+    if (pid == null || pid === lastTurnPid) return;
+    lastTurnPid = pid;
+    const me = myId();
+    if (pid === me) {
+      showTurnBanner("🌟 你的回合");
+      if (window.SFX) { window.SFX.unlock(); window.SFX.play("yourTurn"); }
+      flashTabTitle();
+    } else {
+      const p = view.players[pid];
+      showTurnBanner("🌙 轮到 " + (p ? p.name : "玩家"));
+    }
   }
   // 是否需要模态操作的决定（观星/预知梦等会弹专用面板）——此时不弹通知弹窗，避免互相覆盖卡死
   function isModalDecide() {
@@ -123,10 +177,10 @@
     window.SFX.play("popup");
   }
 
+  // 质疑结果播报：只播“与你有关”的质疑（你质疑别人，或别人质疑你）；其他玩家互质疑/电脑互质疑不播
   function showChallengePopup(cp) {
     const me = myId();
     const X = cp.drawCount;
-    // 只弹“与你有关”的质疑：你质疑别人，或别人质疑你。其他玩家互质疑/电脑互质疑不弹窗。
     const involvesMe = cp.challengerId === me || cp.ownerId === me;
     if (!involvesMe) return;
     let text;
@@ -139,36 +193,20 @@
         ? "✅ " + cp.challengerName + " 质疑了你！但他的质疑失败了。<br>他要拿回你的所有牌，并再摸 " + X + " 张牌！"
         : "😈 " + cp.challengerName + " 质疑了你！他的质疑成功了。<br>你要拿回所有牌，并再摸 " + X + " 张牌！";
     }
-    modalTitle.textContent = "🔍 质疑结果";
-    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
-    modalActions.innerHTML = "";
-    const ok = document.createElement("button");
-    ok.className = "btn-primary";
-    ok.textContent = "知道了";
-    ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
-    modalActions.appendChild(ok);
+    flyPenaltyCards(cp.drawerId);
+    showBroadcast("🔍 质疑结果", text);
     playPopupSfx();
-    modalOverlay.classList.remove("hidden");
   }
-  // 下家未质疑弹窗：只给“打出牌的人”显示提示
+  // 下家未质疑播报：只给被打出者本人提示，其他人不播
   let lastShownPass = null;
   function showPassChallengePopup(pc) {
     const me = myId();
-    // 只给被打出者本人弹窗，其他人不弹
     if (pc.ownerId !== me) return;
     const text = pc.isEarly
       ? "😌 " + pc.passerName + " 没有质疑你，相信了你打出的 " + pc.N + " 张牌！"
       : "😈 " + pc.passerName + " 没有质疑你！你成功隐瞒了 " + pc.N + " 张牌（其实是熬夜）。";
-    modalTitle.textContent = "🙈 未被质疑";
-    modalBody.innerHTML = `<div class="victory" style="font-size:1.05rem;line-height:1.9">${text}</div>`;
-    modalActions.innerHTML = "";
-    const ok = document.createElement("button");
-    ok.className = "btn-primary";
-    ok.textContent = "知道了";
-    ok.addEventListener("click", () => { modalOverlay.classList.add("hidden"); });
-    modalActions.appendChild(ok);
+    showBroadcast("🙈 未被质疑", text);
     playPopupSfx();
-    modalOverlay.classList.remove("hidden");
   }
   // 淘汰弹窗：任何玩家因手牌过多被淘汰，所有玩家都弹提示
   let lastShownEliminate = null;
@@ -196,9 +234,25 @@
       else window.SFX.play(ev);
     }
   }
+  // 本局回顾统计：质疑成败 / 被质疑次数 / 淘汰轮数
+  function buildStatsHtml(players, winnerId) {
+    if (!players || !players.length) return "";
+    const rows = players.map((p) => {
+      const parts = [];
+      if (p.challengeMade) parts.push("质疑 " + p.challengeWon + "胜" + p.challengeLost + "负");
+      if (p.challengedTimes) parts.push("被质疑 " + p.challengedTimes + "次");
+      if (!parts.length) parts.push("未质疑");
+      let status;
+      if (p.id === winnerId) status = "🏆 获胜";
+      else if (p.eliminatedRound != null) status = "💀 第" + p.eliminatedRound + "轮淘汰";
+      else status = "🌙 存活";
+      return `<div class="stat-row"><span class="stat-name">${attr(p.name)}</span><span class="stat-info">${parts.join(" · ")}</span><span class="stat-status">${status}</span></div>`;
+    }).join("");
+    return `<div class="game-stats"><div class="gs-title">📊 本局回顾</div>${rows}</div>`;
+  }
   function showWinner(w) {
     modalTitle.textContent = "🏆 游戏结束";
-    modalBody.innerHTML = `<div class="victory"><span class="big-emoji">🎉</span>${w.name} 第一个睡着了，赢得胜利！</div>`;
+    modalBody.innerHTML = `<div class="victory"><span class="big-emoji">🎉</span>${w.name} 第一个睡着了，赢得胜利！</div>${buildStatsHtml(view.players, w.id)}`;
     modalActions.innerHTML = "";
     const again = document.createElement("button");
     again.className = "btn-primary";
@@ -223,6 +277,7 @@
   function render() {
     if (!view) return;
     renderTop(); renderOpponents(); renderLightsOut(); renderTable(); renderLog(); renderPlayerArea();
+    checkTurnChange();
   }
   function renderTop() {
     roundPill.textContent = "第 " + view.round + " 轮";
@@ -247,6 +302,7 @@
         <div class="back-pile">${miniBacks(p.handCount)}</div>
         <div class="opp-badges">${p.alive ? "" : '<span class="badge dead">💀 淘汰</span>'}${view.currentPlayerId === p.id ? '<span class="badge turn">▶ 进行中</span>' : ""}</div>`;
       opponentsEl.appendChild(el);
+      seatEls[p.id] = el;
     }
   }
   function renderLightsOut() {
@@ -314,13 +370,24 @@
     }
     return map;
   }
+  // 淘汰预警文案：手牌接近 21 张上限时提示“再摸 X 张就淘汰”
+  function elimWarnText(hc) {
+    if (hc < 15) return "";
+    const left = 21 - hc;
+    const danger = hc >= 18;
+    return ' <span class="elim-hint' + (danger ? " danger" : "") + '">⚠️ 再摸 ' + left + " 张就淘汰</span>";
+  }
   function renderPlayerArea() {
     const hand = view.yourHand || [];
     const me = myPlayer();
+    // 淘汰预警：手牌逼近上限时给手牌区渐进变色
+    handEl.classList.toggle("elim-warn", hand.length >= 15);
+    handEl.classList.toggle("elim-danger", hand.length >= 18);
+    handEl.classList.toggle("myturn", isMyTurn());
     clickMode = isMyTurn() ? clickModeFor(view.decide) : null;
     const skillMap = isMyTurn() ? skillCardActions(view.decide) : {};
     playerBarEl.innerHTML = `<span class="name">${me ? me.name : "你"} ${isMyTurn() ? "👈 你的回合" : ""}</span>
-      <span class="info">手牌 ${hand.length} 张 · 扣牌 ${me ? me.playedCount : 0}</span>`;
+      <span class="info">手牌 ${hand.length} 张 · 扣牌 ${me ? me.playedCount : 0}${elimWarnText(hand.length)}</span>`;
     handEl.innerHTML = "";
     const cards = hand.slice().sort((a, b) => a.value - b.value);
     if (!cards.length) { handEl.classList.add("empty-hint"); handEl.textContent = "手牌为空"; }
@@ -441,14 +508,16 @@
     for (const sk of Object.values(SKILLS)) (byValue[sk.value] = byValue[sk.value] || []).push(sk);
     let skillsHtml = "";
     for (let v = 0; v < 6; v++) skillsHtml += `<h3>🕐 ${TIME_NAMES[v]}</h3><ul>` + (byValue[v] || []).map((s) => `<li><b>${s.name}</b>：${attr(s.desc)}</li>`).join("") + "</ul>";
-    $("rulesOverlay").querySelector(".rules-body").innerHTML = `<h3>🌙 游戏背景</h3><p>「今天几点睡」是一款多人卡牌游戏。情境设定在夜晚，每位玩家都要为今晚的入睡时间斗智斗勇——是乖乖早睡，还是偷偷熬夜？一边要伪装自己，一边还要抓出那些谎称早睡、其实在熬夜的家伙。全程充满心理博弈，让你切身体会熬夜时那种既紧张又刺激的感觉。</p><h3>🎯 目标</h3><ul><li>最先清空手牌的玩家获胜。</li><li>手牌达到 21 张及以上会直接淘汰。</li></ul><h3>🂠 卡牌</h3><ul><li>共120张，6种时间点各20张（晚9→晚10→晚11→晚12→凌晨1→凌晨2）。</li><li>每种时间点有3张技能卡，共18张技能卡。</li></ul><h3>🔁 每轮流程</h3><ul><li>首位玩家翻开牌堆顶1张作为【熄灯时间】（每轮轮换）。</li><li>然后按顺序每人一个回合：开始→摸牌→出牌→质疑→结束。</li><li>最后一名玩家回合结束后，场上的牌放入弃牌堆，开始新一轮。</li></ul><h3>😴 早睡 / 熬夜</h3><ul><li>扣着打出的牌<b>全是同一种时间</b>且<b>不晚于熄灯时间</b> → 早睡。</li><li>打出的牌<b>≥2种时间</b>或有牌<b>晚于熄灯时间</b> → 熬夜。</li><li>下家可质疑：若是早睡则质疑失败（质疑者收牌+摸等量的牌），若是熬夜则质疑成功（出牌者收牌+摸等量的牌）。</li></ul><h3>✨ 全部技能</h3>${skillsHtml}`;
+    $("rulesOverlay").querySelector(".rules-body").innerHTML = `<h3>🌙 游戏背景</h3><p>「今天几点睡」是一款多人卡牌游戏。情境设定在夜晚，每位玩家都要为今晚的入睡时间斗智斗勇——是乖乖早睡，还是偷偷熬夜？一边要伪装自己，一边还要抓出那些谎称早睡、其实在熬夜的家伙。全程充满心理博弈，让你切身体会熬夜时那种既紧张又刺激的感觉。</p><h3>🎯 目标</h3><ul><li>最先清空手牌的玩家获胜。</li><li>手牌达到 21 张及以上会直接淘汰。</li></ul><h3>🂠 卡牌</h3><ul><li>共120张，6种时间点各20张（晚9→晚10→晚11→晚12→凌晨1→凌晨2）。</li><li>每种时间点有3张技能卡，共18张技能卡。</li></ul><h3>🔁 每轮流程</h3><ul><li>每轮由轮换的翻灯玩家翻开牌堆顶1张作为【熄灯时间】。</li><li>然后按顺序每人一个回合：开始→摸牌→出牌→质疑→结束。</li><li>每位玩家回合结束后，未被质疑的扣置牌移入弃牌堆；本轮最后一名玩家回合结束后，熄灯时间一并移入弃牌堆，开始新一轮。</li></ul><h3>😴 早睡 / 熬夜</h3><ul><li>扣着打出的牌<b>全是同一种时间</b>且<b>不晚于熄灯时间</b> → 早睡。</li><li>打出的牌<b>≥2种时间</b>或有牌<b>晚于熄灯时间</b> → 熬夜。</li><li>下家可质疑：若是早睡则质疑失败（质疑者收牌+摸等量的牌），若是熬夜则质疑成功（出牌者收牌+摸等量的牌）。</li></ul><h3>✨ 全部技能</h3>${skillsHtml}`;
   }
   $("rulesBtn").addEventListener("click", () => rulesOverlay.classList.remove("hidden"));
   $("closeRulesBtn").addEventListener("click", () => rulesOverlay.classList.add("hidden"));
   const musicBtn = $("musicBtn");
+  const nextBtn = $("nextBtn");
   const volSlider = $("volSlider");
   function updateMusicUI() { if (window.BGM) musicBtn.textContent = window.BGM.isOn() ? "🔊 音乐" : "🔇 音乐"; }
   musicBtn.addEventListener("click", () => { if (window.BGM) { window.BGM.toggle(); updateMusicUI(); } });
+  nextBtn.addEventListener("click", () => { if (window.BGM) { window.BGM.next(); updateMusicUI(); } });
   function applyVolumeFromSlider() {
     const value = Number(volSlider.value) / 100;
     if (window.SFX) {
@@ -476,6 +545,52 @@
   if (document.addEventListener) {
     document.addEventListener("click", (e) => { if (window.SFX && e.target && e.target.closest && e.target.closest("button")) { window.SFX.unlock(); window.SFX.play("click"); } });
   }
+
+  /* ---------- 座位定位（表情气泡 / 牌转移动画共用） ---------- */
+  function seatElFor(pid) { return pid === myId() ? playerAreaEl : seatEls[pid] || null; }
+
+  /* ---------- 牌转移动画：质疑结算后，翻开的牌飞向接收者座位 ---------- */
+  function flyPenaltyCards(pid) {
+    const cards = document.querySelectorAll("#currentPlay .cp-card.face");
+    if (!cards.length) return;
+    // 桌面原牌虚化：说明牌已随动画转移走，但仍保留信息供查看
+    cards.forEach((c) => c.classList.add("ghost"));
+    const to = seatElFor(pid);
+    if (!to) return;
+    const tr = to.getBoundingClientRect();
+    const tx = tr.left + tr.width / 2, ty = tr.top + tr.height / 2;
+    cards.forEach((card, i) => {
+      const r = card.getBoundingClientRect();
+      const fly = document.createElement("div");
+      fly.className = "fly-card";
+      fly.innerHTML = card.innerHTML;
+      fly.style.left = r.left + "px";
+      fly.style.top = r.top + "px";
+      fly.style.width = r.width + "px";
+      fly.style.height = r.height + "px";
+      document.body.appendChild(fly);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fly.style.transform = "translate(" + (tx - r.left - r.width / 2) + "px, " + (ty - r.top - r.height / 2) + "px) rotate(" + (Math.random() * 24 - 12) + "deg) scale(0.72)";
+        fly.style.opacity = "0";
+      }));
+      setTimeout(() => fly.remove(), 650 + i * 60);
+    });
+    // 目标座位冒出“+N”数字
+    const pop = document.createElement("div");
+    pop.className = "seat-pop";
+    pop.style.left = tx + "px";
+    pop.style.top = ty + "px";
+    pop.textContent = "+" + cards.length;
+    document.body.appendChild(pop);
+    setTimeout(() => pop.remove(), 750);
+  }
+
+  /* ---------- 表情系统（联机）：按钮发送，气泡从座位冒出 ---------- */
+  const emojiChat = window.EmojiChat.create({
+    sendEmoji: (emoji) => send({ type: "emoji", emoji }),
+    seatEl: seatElFor,
+    myPid: () => myId(),
+  });
 
   buildRules();
   connect();

@@ -42,16 +42,20 @@
 
     <!-- 顶栏 -->
     <header class="topbar">
-      <div class="brand">🌙 今天几点睡</div>
+      <div class="brand-wrap">
+        <div class="brand">🌙 今天几点睡</div>
+        <div class="brand-sub">by 汤元小彬</div>
+      </div>
       <div class="hud">
         <span class="pill" id="roundPill">第 1 轮</span>
         <span class="vol-wrap">
           <input type="range" id="volSlider" min="0" max="100" value="55" title="音量" />
         </span>
         <button id="musicBtn" class="btn-ghost" type="button">🔇 音乐</button>
+        <button id="nextBtn" class="btn-ghost" type="button">⏭ 切歌</button>
         <button id="rulesBtn" class="btn-ghost" type="button">📜 规则</button>
         <button id="skillBtn" class="btn-ghost" type="button">🧠 技能一览</button>
-        <button id="newGameBtn" class="btn-primary" type="button">↻ 重新开局</button>
+        <button id="newGameBtn" class="btn-danger" type="button">↻ 重新开局</button>
       </div>
     </header>
 
@@ -162,6 +166,7 @@
   <script src="bgm.js"></script>
   <script src="sfx.js"></script>
   <script src="moon.js"></script>
+  <script src="emoji.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

@@ -8,8 +8,8 @@
 (function (root) {
   "use strict";
 
-  // 默认曲目列表（按顺序轮换）。曲子文件放在同目录。
-  const DEFAULT_SRCS = ["bgm.mp3", "bgm2.mp3"];
+  // 默认曲目列表（按顺序轮换）。曲子文件放在同目录。bgm0=最初的曲子，bgm/bgm2=后来的替换与新增
+  const DEFAULT_SRCS = ["bgm0.mp3", "bgm.mp3", "bgm2.mp3"];
   const SRC = (root.__BGM_SRC != null)
     ? [root.__BGM_SRC]        // 单文件版只注入一首 data URI
     : DEFAULT_SRCS;
@@ -142,6 +142,15 @@
     return playing;
   }
 
+  /** 手动切歌：未播放时开始播放，播放中立即交叉淡化到下一首 */
+  function next() {
+    ensure();
+    if (!players.length) return false;
+    if (!playing) { start(); return true; }
+    startCrossfade();
+    return true;
+  }
+
   function isOn() {
     return playing;
   }
@@ -157,5 +166,5 @@
     }
   }
 
-  root.BGM = { toggle, start, stop, isOn, setVolume };
+  root.BGM = { toggle, start, stop, next, isOn, setVolume };
 })(typeof self !== "undefined" ? self : this);

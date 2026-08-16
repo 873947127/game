@@ -71,7 +71,7 @@ function broadcastRoom(room) {
 function cardMini(c) { return { id: c.id, value: c.value, skill: c.skill }; }
 function buildView(state, viewerId) {
   const isDecider = state.decide && state.decide.pid === viewerId;
-  const players = state.players.map((p) => ({ id: p.id, name: p.name, isAI: p.isAI, alive: p.alive, handCount: p.hand.length, playedCount: p.playedCards.length }));
+  const players = state.players.map((p) => ({ id: p.id, name: p.name, isAI: p.isAI, alive: p.alive, handCount: p.hand.length, playedCount: p.playedCards.length, challengeMade: p.challengeMade, challengeWon: p.challengeWon, challengeLost: p.challengeLost, challengedTimes: p.challengedTimes, eliminatedRound: p.eliminatedRound }));
   const view = {
     type: "view", yourId: viewerId, round: state.round, deckCount: state.deck.length, discardCount: state.discard.length,
     players, currentPlayerId: state.decide && state.decide.kind !== "roundStartSkill" && state.decide.pid != null ? state.decide.pid : (state.turn ? state.turn.pid : null),
@@ -81,7 +81,7 @@ function buildView(state, viewerId) {
     currentPlay: state.currentPlay.cards.length ? { ownerId: state.currentPlay.ownerId, count: state.currentPlay.cards.length, revealed: state.currentPlay.cards.filter((c) => c.revealed).map(cardMini) } : null,
     lastReveal: state.lastReveal ? { isEarly: state.lastReveal.isEarly, ownerName: state.lastReveal.ownerName, challengerName: state.lastReveal.challengerName, skill: state.lastReveal.skill, cards: state.lastReveal.cards.map(cardMini) } : null,
     log: state.log.slice(-40),
-    winner: state.winner != null ? { name: state.players[state.winner].name } : null,
+    winner: state.winner != null ? { id: state.winner, name: state.players[state.winner].name } : null,
     sfx: state.sfx.slice(),
     challengePopup: state.challengePopup ? {
       challengerId: state.challengePopup.challengerId,
@@ -206,6 +206,21 @@ wss.on("connection", (ws) => {
         if (pid == null || Number(pid) !== d.pid) return;
         engine.act(room.state, data.action);
         advance(room);
+        break;
+      }
+      case "emoji": {
+        // 表情消息：广播给全房间（含发送者），让所有人同时看到气泡
+        const room = Object.values(rooms).find((r) => r.engineToWs && Object.values(r.engineToWs).includes(ws));
+        if (!room || !room.state) return;
+        const pid = Object.keys(room.engineToWs).find((k) => room.engineToWs[k] === ws);
+        if (pid == null) return;
+        const emoji = String(data.emoji || "").slice(0, 8);
+        if (!emoji) return;
+        const senderPid = Number(pid);
+        const name = (room.state.players[senderPid] && room.state.players[senderPid].name) || "玩家";
+        for (const [k, cws] of Object.entries(room.engineToWs)) {
+          if (cws && cws.readyState === 1) send(cws, { type: "emoji", pid: senderPid, name, emoji });
+        }
         break;
       }
       default: break;
