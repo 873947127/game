@@ -1392,18 +1392,9 @@ button:disabled:hover { transform: none; }
   .hud { gap: 6px; margin-right: 0; } /* 移动端月亮较小且位置不同，无需左移 */
   .hud .btn-ghost, .hud .btn-primary { padding: 6px 10px; font-size: 0.82rem; }
 
-  /* 月亮：移动端缩小并上移贴近右上角；提升层级使其可点击（否则被全屏 #app 盖住） */
-  .moon-btn {
-    z-index: var(--z-float);
-    width: 64px;
-    height: 64px;
-    top: 8%;
-    right: 4%;
-  }
-  .moon-btn .moon-svg {
-    width: 112px;
-    height: 112px;
-  }
+  /* 月亮：手机端隐藏（会挡住顶栏按键，只在桌面端显示） */
+  .moon-btn { display: none; }
+
 
   /* 对手区紧凑 */
   .opponents { gap: 6px; }
