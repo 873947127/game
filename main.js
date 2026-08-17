@@ -1515,7 +1515,7 @@
       case "giveCard":
         return `💤 ${p.name} 打出【该补觉了】：选一张你的手牌交给对方。`;
       case "failSkill":
-        return `😴 ${p.name} 质疑失败但成功脱身！可发动【瞌睡虫 / 午夜凶铃】，或跳过。`;
+        return `😴 ${p.name}：被质疑失败，可发动技能牌，或跳过。`;
       case "bellDraw":
         return `🔔 ${p.name} 正在被【午夜凶铃】纠缠：点击屏幕每次摸1张，直到摸到晚上12点或手牌达到20张。`;
       case "endSkill":

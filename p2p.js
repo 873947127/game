@@ -291,7 +291,7 @@
       case "yanzhao": return "😷 你被抓到熬夜了！要亮出【蒸汽眼罩】少摸2张吗？";
       case "reaction": return "⚡ 你质疑成功！可打出反应技能牌，或跳过。";
       case "giveCard": return "💤 打出【该补觉了】：选一张你的手牌交给对方。";
-      case "failSkill": return "😴 你质疑失败但成功脱身！可发动【瞌睡虫/午夜凶铃】或跳过。";
+      case "failSkill": return "😴 你被质疑失败，可发动技能牌，或跳过。";
       case "bellDraw": return "🔔 你被【午夜凶铃】纠缠：点击屏幕每次摸1张，直到摸到晚上12点或手牌达到20张。";
       case "endSkill": return "🌅 你的结束阶段：可发动技能牌（未被质疑）或跳过。";
       case "skillTarget": return "🎯 选择一名玩家作为目标。";
