@@ -907,6 +907,7 @@
       return;
     }
     state = engine.newGame({ players: cfg });
+    if (window.umami) window.umami.track("game_start", { mode: "single", players: cfg.length });
     humanIds = cfg.map((p, i) => (p.isAI ? null : i)).filter((i) => i != null);
     selected.clear();
     clickMode = null;

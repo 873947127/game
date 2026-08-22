@@ -23,6 +23,7 @@
   let revealedCardsRef = new Set(); // 已亮出并播过翻牌动画的技能牌 id
   let lastHoverAt = 0;
   let mpCount = 4;
+  let gameStartedTracked = false; // 本局是否已上报过“开局”统计事件
 
   const $ = (id) => document.getElementById(id);
   const roundPill = $("roundPill"), deckPill = $("deckPill"), discardPill = $("discardPill");
@@ -103,7 +104,7 @@
       let msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
       if (msg.type === "room") { roomInfo = msg; connected = true; renderLobby(); roomOverlay.classList.remove("hidden"); }
-      else if (msg.type === "view") { view = msg.view; roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; showChallengePopup(view.challengePopup); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
+      else if (msg.type === "view") { view = msg.view; if (!gameStartedTracked) { gameStartedTracked = true; if (window.umami) window.umami.track("game_start", { mode: "online" }); } roomOverlay.classList.add("hidden"); playViewSfx(view); render(); if (view.winner) showWinner(view.winner); if (view.challengePopup && view.challengePopup !== lastShownChallenge && !isModalDecide()) { lastShownChallenge = view.challengePopup; showChallengePopup(view.challengePopup); } if (view.passChallengePopup && view.passChallengePopup !== lastShownPass && !isModalDecide()) { lastShownPass = view.passChallengePopup; showPassChallengePopup(view.passChallengePopup); } if (view.eliminatePopup && view.eliminatePopup !== lastShownEliminate) { lastShownEliminate = view.eliminatePopup; showEliminatePopup(view.eliminatePopup); } }
       else if (msg.type === "error") alert(msg.message);
       else if (msg.type === "emoji") emojiChat.showEmoji(msg.pid, msg.emoji, msg.name);
     };
